@@ -1,5 +1,5 @@
 # ==============================================================================
-# Script Name:  03_cold_water_coral_master_figure.R
+# Script Name:  03_CWC_master_figure1.R
 # Description:  Loads master tracked cold-water coral dataset (from Script 02),
 #               performs Kolmogorov-Smirnov and Kruskal-Wallis/Dunn statistical 
 #               testing, computes Wilson score confidence intervals for dynamic 
