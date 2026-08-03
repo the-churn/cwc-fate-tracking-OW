@@ -18,8 +18,8 @@ library(ggplot2)
 # 2. CONFIGURATION & FILE PATHS
 # ------------------------------------------------------------------------------
 base_dir      <- "D:/PhD_Data(Large)/06_Final_Analysis/Master_Dataset"
-input_xlsx    <- file.path(base_dir, "Error_Propagation/Master_CWC_Tracked_MDC_Age.xlsx")
-output_fig    <- file.path(base_dir, "Figures/Fig_growth_rate.png")
+input_xlsx    <- file.path("data", "Error_Propagation", "Master_CWC_Tracked_MDC.xlsx")
+output_fig    <- file.path("outputs", "figures", "Fig_growth_rate.png")
 
 # ------------------------------------------------------------------------------
 # 3. DATA CLEANING & GROWTH SUBSET PREPARATION
