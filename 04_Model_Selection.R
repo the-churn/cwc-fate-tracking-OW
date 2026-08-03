@@ -1,5 +1,5 @@
 # ==============================================================================
-# Script Name:  04_formal_vital_rate_identification.R
+# Script Name:  04_Model_Selection.R
 # Description:  Partitions master cold-water coral dataset into discrete 
 #               demographic vital rates (Growth, Shrinkage, Mortality), performs 
 #               formal model selection (GNLS, GLS, GLM) following the Zuur protocol,
