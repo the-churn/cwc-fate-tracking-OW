@@ -25,7 +25,7 @@ library(ragg)
 # ------------------------------------------------------------------------------
 # Utilizing relative paths ensures seamless reproducibility for journal archives 
 # (e.g., Current Biology supplementary code bundles).
-input_xlsx_path <- file.path("data", "Error_Propagation", "Master_CWC_Tracked_MDC_Age.xlsx")
+input_xlsx_path  <- file.path("data", "Error_Propagation", "Master_CWC_Tracked_MDC.xlsx")
 output_tab_path  <- file.path("outputs", "tables", "Script04_Formal_Vital_Rate_Models.xlsx")
 output_fig_path  <- file.path("outputs", "figures", "Script04_Vital_Rate_Diagnostics.png")
 
