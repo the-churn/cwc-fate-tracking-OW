@@ -291,13 +291,38 @@ audit_results <- read_excel(audit_template_path) %>%
     TagLab.Genet.Id = as.character(TagLab.Genet.Id),
     A1_2015         = as.numeric(A1_2015)
   )
-
+ 
+n_before_audit_merge <- nrow(stand_age_raw)
+ 
 stand_age_audited <- stand_age_raw %>%
   mutate(TagLab.Genet.Id = as.character(TagLab.Genet.Id)) %>%
   left_join(
     audit_results %>% dplyr::select(TagLab.Genet.Id, Audit_Status, Match_2015, A1_2015),
     by = "TagLab.Genet.Id"
-  ) %>%
+  )
+ 
+# Guard against a many-to-many join (e.g. a shared placeholder ID such as "0"
+# used for "no genet ID assigned" on either side). A left_join should never
+# change row count here -- if it does, some Audit_Status/A1_2015 correction
+# is about to get silently applied to more than one colony.
+if (nrow(stand_age_audited) != n_before_audit_merge) {
+  dup_ids <- stand_age_raw %>%
+    mutate(TagLab.Genet.Id = as.character(TagLab.Genet.Id)) %>%
+    count(TagLab.Genet.Id) %>%
+    filter(n > 1) %>%
+    pull(TagLab.Genet.Id)
+  stop(
+    "Audit merge produced ", nrow(stand_age_audited), " rows from ", n_before_audit_merge,
+    " input rows -- TagLab.Genet.Id is not unique on at least one side of the join.\n",
+    "Duplicated TagLab.Genet.Id value(s) in stand_age_raw: ", paste(dup_ids, collapse = ", "), "\n",
+    "This is often caused by a placeholder value (e.g. 0) shared by multiple\n",
+    "untracked colonies. Fix the ID(s) in the audit file (or in the raw data)\n",
+    "before continuing -- otherwise audit corrections will be misattributed.",
+    call. = FALSE
+  )
+}
+ 
+stand_age_audited <- stand_age_audited %>%
   mutate(
     # "growth" colonies get their true 2015 area restored -- only if a
     # confirmed match was actually recorded (an unconfirmed guess must NOT
@@ -311,7 +336,7 @@ stand_age_audited <- stand_age_raw %>%
   ) %>%
   filter(is.na(Audit_Status) | Audit_Status != "artifact") %>%
   flag_tracked()  # recompute now that A1 may have changed
-
+ 
 cat("Audited dataset ready:", nrow(stand_age_audited), "rows (",
     sum(!is.na(stand_age_audited$Audit_Status)), "reviewed).\n")
 
