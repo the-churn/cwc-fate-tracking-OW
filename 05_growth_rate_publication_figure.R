@@ -194,3 +194,6 @@ ggsave(
 )
 
 cat("Successfully generated and exported:\n ", output_fig, "\n")
+
+dir.create(file.path("outputs", "models"), recursive = TRUE, showWarnings = FALSE)
+saveRDS(m_gnls_final, file.path("outputs", "models", "m_gnls_final.rds"))
