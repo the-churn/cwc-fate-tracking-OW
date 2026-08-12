@@ -1,11 +1,11 @@
 # ==============================================================================
 # Script Name:  02_error_propagation_and_MDC.R
 # Description:  Models empirical TagLab measurement error using repeat CNN 
-#               annotations (CNN Error.xlsx), classifies ecological state 
-#               transitions (persistence, mortality, recruitment), propagates 
-#               dynamic measurement error to calculate 95% Minimum Detectable 
-#               Change (MDC95), and exports Master_CWC_Tracked_MDC.xlsx for 
-#               downstream plotting and statistical analyses (Script 03).
+#                annotations (CNN Error.xlsx), classifies ecological state 
+#                transitions (persistence, mortality, recruitment), propagates 
+#                dynamic measurement error to calculate 95% Minimum Detectable 
+#                Change (MDC95), and exports Master_CWC_Tracked_MDC.xlsx for 
+#                downstream plotting and statistical analyses (Script 03).
 # Dependencies: readxl, readr, dplyr, writexl
 # ==============================================================================
 
@@ -20,8 +20,7 @@ library(writexl)
 # ------------------------------------------------------------------------------
 # 2. CONFIGURATION & FILE PATHS
 # ------------------------------------------------------------------------------
-# Base path (adjust to match your directory structure if necessary)
-base_dir <- "D:/PhD_Data(Large)"
+base_dir <- "D:/PhD_Data(Large)/Submission_Dataset"
 
 cnn_error_path    <- file.path(base_dir, "CNN Error.xlsx")
 input_csv_path    <- file.path(base_dir, "master_CWC_tracked.csv")
@@ -53,6 +52,9 @@ model_final <- lm(sd_area ~ mean_area + species, data = colony_stats)
 cat("Empirical Error Model Summary:\n")
 print(summary(model_final))
 
+# Extract training species factor levels
+valid_species_levels <- levels(factor(colony_stats$species))
+
 # ------------------------------------------------------------------------------
 # 4. LOAD TRACKED DATASET & CLASSIFY STATE TRANSITIONS
 # ------------------------------------------------------------------------------
@@ -80,9 +82,31 @@ df <- df %>%
 # ------------------------------------------------------------------------------
 # 5. DYNAMIC ERROR PROPAGATION & DETECTABLE CHANGE (MDC95)
 # ------------------------------------------------------------------------------
-# Prepare prediction data frames matching model terms (mean_area & species)
-pred_df_2015 <- data.frame(mean_area = df$A1, species = df$Species)
-pred_df_2022 <- data.frame(mean_area = df$A2, species = df$Species)
+# Harmonize species mapping for model prediction:
+# 1. Map 'Primnoa msp.1' -> 'Primnoa msp.5' (or matching Primnoa training level)
+# 2. Set 'Coral Recruit' -> NA (recruits are excluded from MDC predictions)
+target_primnoa <- if ("Primnoa msp.5" %in% valid_species_levels) "Primnoa msp.5" else grep("Primnoa", valid_species_levels, value = TRUE)[1]
+
+df_pred_mapped <- df %>%
+  mutate(
+    species_for_pred = case_when(
+      Species == "Primnoa msp.1" ~ target_primnoa,
+      Species == "Coral Recruit" ~ NA_character_,
+      TRUE                       ~ Species
+    ),
+    species_for_pred = factor(species_for_pred, levels = valid_species_levels)
+  )
+
+# Build prediction dataframes using df_pred_mapped$species_for_pred
+pred_df_2015 <- data.frame(
+  mean_area = df_pred_mapped$A1, 
+  species   = df_pred_mapped$species_for_pred
+)
+
+pred_df_2022 <- data.frame(
+  mean_area = df_pred_mapped$A2, 
+  species   = df_pred_mapped$species_for_pred
+)
 
 df <- df %>%
   mutate(
@@ -94,15 +118,16 @@ df <- df %>%
     change_area = A2 - A1,
     
     # Root Sum of Squares (quadrature sum) for error propagation
-    sigma_change = sqrt(sigma1^2 + sigma2^2),
+    sigma_change = ifelse(Species == "Coral Recruit", NA, sqrt(sigma1^2 + sigma2^2)),
     
     # Absolute 95% Minimum Detectable Change threshold (cm²)
-    MDC95 = 1.96 * sigma_change,
+    MDC95 = ifelse(Species == "Coral Recruit", NA, 1.96 * sigma_change),
     
-    # Binary detectability boolean (evaluated for persistent colonies)
+    # Binary detectability boolean (evaluated for persistent colonies, excluding recruits)
     detectable_change = case_when(
+      Species == "Coral Recruit"         ~ NA,
       state_transition == "persistence" ~ abs(change_area) > MDC95,
-      TRUE                              ~ NA
+      TRUE                               ~ NA
     ),
     
     # ANNUALIZED METRIC ALIGNMENT FOR SCRIPT 03 ---------------------------------
@@ -131,7 +156,6 @@ print(species_summary)
 # ------------------------------------------------------------------------------
 # 7. EXPORT DATASETS
 # ------------------------------------------------------------------------------
-# Ensure directory exists before writing
 dir.create(dirname(output_xlsx_path), recursive = TRUE, showWarnings = FALSE)
 
 write_xlsx(df, output_xlsx_path)
