@@ -1,3 +1,6 @@
+Here is your complete, updated `03_CWC_master_figure1.R` script, maintained in your exact structure, commenting style, and variable naming format, with the panel clipping and headroom fixes fully incorporated:
+
+```R
 # ==============================================================================
 # Script Name:  03_CWC_master_figure1.R
 # Description:  Loads master tracked cold-water coral dataset (from Script 02),
@@ -205,9 +208,9 @@ theme_horizontal_panel <- function() {
       axis.line        = element_line(color = "black", linewidth = 0.4),
       axis.ticks       = element_line(color = "black", linewidth = 0.4),
       axis.text.x      = element_text(color = "black", size = 8.5),
-      axis.title.x     = element_text(face = "bold", size = 9.5, margin = margin(t = 8)),
+      axis.title.x     = element_text(face = "bold", size = 9.5, margin = margin(t = 8, b = 2)),
       axis.text.y      = element_text(color = "black", size = 8.5),
-      axis.title.y     = element_text(face = "bold", size = 9.5),
+      axis.title.y     = element_text(face = "bold", size = 9.5, margin = margin(r = 6, b = 2)),
       panel.grid.minor = element_blank(),
       panel.grid.major = element_line(color = "grey93", linewidth = 0.3),
       panel.spacing    = unit(8, "pt"),
@@ -215,7 +218,7 @@ theme_horizontal_panel <- function() {
       strip.text       = element_text(face = "plain", size = 9, margin = margin(t = 4, b = 4)), 
       legend.position  = "none",
       plot.tag         = element_text(face = "bold", size = 12),
-      plot.margin      = margin(t = 4, r = 6, b = 4, l = 6)
+      plot.margin      = margin(t = 6, r = 6, b = 8, l = 6)
     )
 }
 
@@ -224,7 +227,7 @@ theme_set(theme_classic(base_size = 8, base_family = FONT_FAMILY))
 publication_theme <- theme(
   plot.title         = element_blank(), 
   axis.title.x       = element_blank(), 
-  axis.title.y       = element_text(margin = margin(r = 6), face = "bold", color = "black", size = 8.5),
+  axis.title.y       = element_text(margin = margin(r = 6, b = 2), face = "bold", color = "black", size = 8.5),
   axis.text.x        = element_text(color = "black", size = 7.5, hjust = 0.5, vjust = 0.5), 
   axis.text.y        = element_text(color = "black", size = 7.5),
   axis.line          = element_line(linewidth = 0.3, color = "black"),
@@ -232,7 +235,7 @@ publication_theme <- theme(
   panel.grid.major.y = element_line(color = "gray96", linetype = "solid"),
   legend.position    = "none",
   plot.tag           = element_text(face = "bold", size = 11, vjust = 1),
-  plot.margin        = margin(t = 8, r = 6, b = 6, l = 6)
+  plot.margin        = margin(t = 8, r = 6, b = 8, l = 6)
 )
 
 area_axis_title <- expression(bold(paste("Colony planar area (cm"^2, ", natural-log scale)")))
@@ -258,6 +261,7 @@ make_density_plot <- function(grp_name, tag) {
              size = 2.1, vjust = 3.5, hjust = -0.1, color = "grey20", family = FONT_FAMILY) +
     facet_wrap(~Group, labeller = strip_labeller) +
     scale_x_continuous(breaks = log(c(1, 10, 100, 1000)), labels = scales::comma(c(1, 10, 100, 1000)), limits = log(c(0.8, 2500))) +
+    coord_cartesian(clip = "off") +
     labs(x = area_axis_title, y = "Density probability", tag = tag) +
     theme_horizontal_panel()
 }
@@ -275,7 +279,7 @@ p3 <- make_density_plot("Primnoa msp.", "C") + theme(axis.title.y = element_blan
 # ------------------------------------------------------------------------------
 cat("Building Row 2 demographic plots...\n")
 
-# Panel D: Growth rate distributions
+# Panel D: Growth rate distributions (with headroom & clipping fixes)
 p1_growth <- ggplot(df_growth, aes(x = Species, y = Annual_Area_Change)) +
   geom_violin(aes(fill = Species), alpha = 0.08, color = NA) +
   geom_jitter(aes(color = Species, alpha = detectable_change), width = 0.18, size = 0.6) +
@@ -287,12 +291,14 @@ p1_growth <- ggplot(df_growth, aes(x = Species, y = Annual_Area_Change)) +
                                       y = -mean_mdc, yend = -mean_mdc), linetype = "dashed", color = "black", linewidth = 0.35) +
   geom_signif(
     comparisons = comparison_list, annotations = dunn_labels,
-    step_increase = 0.07, textsize = 2.5, tip_length = 0.015, linewidth = 0.35, color = "black"
+    step_increase = 0.08, textsize = 2.5, tip_length = 0.015, linewidth = 0.35, color = "black"
   ) +
   scale_fill_manual(values = species_palette) +
   scale_color_manual(values = species_palette) +
   scale_alpha_manual(values = c("FALSE" = 0.12, "TRUE" = 0.80)) +
   scale_x_discrete(labels = p1_labels) +
+  scale_y_continuous(expand = expansion(mult = c(0.08, 0.22))) +
+  coord_cartesian(clip = "off") +
   labs(
     tag = "D",
     y = expression(bold(paste("Annual growth (", cm^2, " ", yr^-1, ")")))
@@ -306,7 +312,8 @@ p2_recruitment <- ggplot(summary_stats_row2, aes(x = Species, y = recruitment_ra
   geom_text(aes(y = rec_ci_upper, label = paste0(round(recruitment_rate, 1), "%")), vjust = -0.6, size = 2.4, fontface = "bold") +
   scale_fill_manual(values = species_palette) +
   scale_x_discrete(labels = p2_labels) +
-  scale_y_continuous(expand = expansion(mult = c(0, 0.15))) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.18))) +
+  coord_cartesian(clip = "off") +
   labs(
     tag = "E",
     y = "Recruitment rate (% of 2022 total)"
@@ -320,7 +327,8 @@ p3_mortality <- ggplot(summary_stats_row2, aes(x = Species, y = mortality_rate, 
   geom_text(aes(y = mort_ci_upper, label = paste0(round(mortality_rate, 1), "%")), vjust = -0.6, size = 2.4, fontface = "bold") +
   scale_fill_manual(values = species_palette) +
   scale_x_discrete(labels = p3_labels) +
-  scale_y_continuous(expand = expansion(mult = c(0, 0.15))) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.18))) +
+  coord_cartesian(clip = "off") +
   labs(
     tag = "F",
     y = "Mortality rate (% of 2015 total)"
@@ -395,3 +403,5 @@ cat("\n======================================================================\n"
 cat("Script 03 execution complete!\n")
 cat("Master figure exported to:\n ", output_fig_path, "\n")
 cat("======================================================================\n")
+
+```
