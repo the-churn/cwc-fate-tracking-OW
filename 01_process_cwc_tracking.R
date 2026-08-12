@@ -12,11 +12,11 @@ library(tidyverse)
 # 1. CONFIGURATION & INPUT PATHS
 # ------------------------------------------------------------------------------
 # Set base path to your local data directory (Replace with your local path)
-base_dir <- "path/to/data_directory"  # e.g., "D:/PhD_Data(Large)"
+base_dir <- "D:/PhD_Data(Large)"
 
 # Define subdirectories relative to base path
-data_dir   <- file.path(base_dir, "02_Processed", "TagLab_Outputs", "FullWall_1fps")
-output_dir <- file.path(base_dir, "06_Final_Analysis", "Master_Dataset")
+data_dir   <- file.path(base_dir, "Submission_Dataset")
+output_dir <- file.path(base_dir, "Submission_Dataset")
 
 # Define explicit input/output file paths
 path_2015    <- file.path(data_dir, "OW15_1fps_full.csv")
@@ -30,7 +30,7 @@ if (!dir.exists(output_dir)) {
   dir.create(output_dir, recursive = TRUE)
 }
 
-# Exclusion list for genet.IDs that were not within overlapping area (2022 vs 2015)
+# Exclusion list for genet.IDs that were not within overlapping area (2022 vs 2015) after visual auditing
 exclude_genet_ids <- c(
   941, 1010, 1011, 1012, 1013, 1014, 1015, 1016, 1008, 1005, 1004, 
   1006, 1007, 984, 971, 975, 973, 974, 966, 965, 1086, 989, 993, 
@@ -82,12 +82,6 @@ regions_cleaned <- master_dataset %>%
   filter(!is.na(Image.name) & Image.name != "") %>%
   filter(!TagLab.Genet.Id %in% exclude_genet_ids) %>%
   mutate(
-    # Explicitly reassign Genet ID 6666 to unassigned D. pertusum colony across years
-    TagLab.Genet.Id = case_when(
-      (TagLab.Genet.Id == 0 | is.na(TagLab.Genet.Id)) & TagLab.Class.name == "D. pertusum" ~ 6666,
-      TRUE ~ TagLab.Genet.Id
-    ),
-    
     # Assign persistent Join_ID across sampling years
     Join_ID = ifelse(
       TagLab.Genet.Id == 0 | is.na(TagLab.Genet.Id), 
@@ -95,7 +89,6 @@ regions_cleaned <- master_dataset %>%
       as.character(TagLab.Genet.Id)
     )
   )
-
 
 # ------------------------------------------------------------------------------
 # 4. ANNUAL COHORT AGGREGATION
