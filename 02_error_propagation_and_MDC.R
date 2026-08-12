@@ -21,12 +21,12 @@ library(writexl)
 # 2. CONFIGURATION & FILE PATHS
 # ------------------------------------------------------------------------------
 # Base path (adjust to match your directory structure if necessary)
-base_dir <- "D:/PhD_Data(Large)/06_Final_Analysis/Master_Dataset"
+base_dir <- "D:/PhD_Data(Large)"
 
-cnn_error_path    <- file.path(base_dir, "Error_Propagation/CNN Error.xlsx")
+cnn_error_path    <- file.path(base_dir, "CNN Error.xlsx")
 input_csv_path    <- file.path(base_dir, "master_CWC_tracked.csv")
-output_xlsx_path  <- file.path(base_dir, "Error_Propagation/Master_CWC_Tracked_MDC.xlsx")
-summary_xlsx_path <- file.path(base_dir, "Error_Propagation/Master_CWC_Species_Summary.xlsx")
+output_xlsx_path  <- file.path(base_dir, "Master_CWC_Tracked_MDC.xlsx")
+summary_xlsx_path <- file.path(base_dir, "Master_CWC_Species_Summary.xlsx")
 
 # Sampling duration (2015 to 2022)
 time_interval_years <- 7
