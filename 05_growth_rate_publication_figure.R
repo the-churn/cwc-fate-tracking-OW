@@ -1,8 +1,9 @@
 # ==============================================================================
 # Script Name:  05_growth_rate_publication_figure.R
-# Description:  Fits the final heteroscedastic asymptotic (GNLS) growth model,
-#               extracts biological thresholds, and generates an Ecography-styled
-#               publication figure mapping relative growth rate (RGR) across sizes.
+# Description:  Loads the fitted heteroscedastic asymptotic (GNLS) growth model
+#                from Script 04, extracts biological thresholds dynamically, 
+#                and generates an Ecography-styled publication figure mapping 
+#                relative growth rate (RGR) across initial sizes.
 # Dependencies: readxl, dplyr, nlme, ggplot2, ragg
 # ==============================================================================
 
@@ -13,187 +14,205 @@ library(readxl)
 library(dplyr)
 library(nlme)
 library(ggplot2)
+library(ragg)
 
 # ------------------------------------------------------------------------------
 # 2. CONFIGURATION & FILE PATHS
 # ------------------------------------------------------------------------------
-base_dir      <- "D:/PhD_Data(Large)/06_Final_Analysis/Master_Dataset"
-input_xlsx    <- file.path("data", "Error_Propagation", "Master_CWC_Tracked_MDC.xlsx")
-output_fig    <- file.path("outputs", "figures", "Fig_growth_rate.png")
+base_dir       <- "D:/PhD_Data(Large)/Submission_Dataset"
+
+input_xlsx_path <- file.path(base_dir, "Master_CWC_Tracked_MDC.xlsx")
+model_rds_path  <- file.path(base_dir, "models", "m_growth_gnls_SSasymp.rds")
+output_fig_path <- file.path(base_dir, "Figures", "Fig_growth_rate_publication.png")
+
+FONT_FAMILY  <- "sans"
+group_levels <- c("Madrepora oculata", "Desmophyllum pertusum", "Primnoa msp.")
+
+species_palette <- c(
+  "Madrepora oculata"     = "#722082",
+  "Desmophyllum pertusum" = "#B63679",
+  "Primnoa msp."          = "#fb9f3a"
+)
+
+species_labels_expr <- c(
+  "Madrepora oculata"     = expression(italic("M. oculata")),
+  "Desmophyllum pertusum" = expression(italic("D. pertusum")),
+  "Primnoa msp."          = expression(italic("Primnoa") ~ "msp.")
+)
 
 # ------------------------------------------------------------------------------
-# 3. DATA CLEANING & GROWTH SUBSET PREPARATION
+# 3. LOAD DATASET & SAVED GNLS MODEL OBJECT
 # ------------------------------------------------------------------------------
-cat("Loading and filtering master dataset...\n")
-zuur <- read_excel(input_xlsx)
+cat("Loading cleaned dataset and saved GNLS growth model...\n")
+df_raw <- read_excel(input_xlsx_path)
 
-zuur_clean <- zuur %>%
-  filter(state_transition == "persistence" & Species != "Coral Recruit") %>%
+df_clean <- df_raw %>%
+  filter(Species != "Coral Recruit") %>%
   mutate(
-    fSpecies = case_when(
+    Group = case_when(
       Species == "Madrepora oculata" ~ "Madrepora oculata",
-      Species %in% c("D. pertusum", "Desmophyllum pertusum") ~ "D. pertusum",
+      Species %in% c("D. pertusum", "Desmophyllum pertusum") ~ "Desmophyllum pertusum",
       Species %in% c("Primnoa msp.5", "Primnoa msp.1") ~ "Primnoa msp.",
       TRUE ~ NA_character_
     )
   ) %>%
-  filter(!is.na(fSpecies)) %>%
-  mutate(fSpecies = factor(fSpecies, levels = c("D. pertusum", "Madrepora oculata", "Primnoa msp.")))
+  filter(!is.na(Group)) %>%
+  mutate(fSpecies = factor(Group, levels = group_levels))
 
-# Isolate positive growth subset (RGR >= 0)
-zuur_growth <- zuur_clean %>%
-  filter(RGR_Planar >= 0)
+# Persistent colonies dataset (matching Script 04)
+df_growth <- df_clean %>%
+  filter(state_transition == "persistence", !is.na(RGR_Planar), !is.na(A1))
 
-# ------------------------------------------------------------------------------
-# 4. FINAL GNLS MODEL FITTING (VarPower Variance Structure)
-# ------------------------------------------------------------------------------
-cat("Fitting starting values and final GNLS asymptotic model...\n")
+# Load model object output from Script 04
+if (!file.exists(model_rds_path)) {
+  stop("ERROR: Model object not found at ", model_rds_path, "\nPlease run Script 04 first to save the model RDS.")
+}
+m_growth_gnls <- readRDS(model_rds_path)
 
-# Self-starting initial estimates via nlsList
-m_list <- nlsList(
-  RGR_Planar ~ SSasymp(A1, Asym, R0, lrc) | fSpecies, 
-  data = zuur_growth,
-  na.action = na.omit
-)
-start_vec <- c(coef(m_list)$Asym, coef(m_list)$R0, coef(m_list)$lrc)
-
-# Final robust GNLS model using the parsimonious VarPower_Sp weighting structure
-m_gnls_final <- gnls(
-  RGR_Planar ~ SSasymp(A1, Asym, R0, lrc),
-  params = list(Asym ~ fSpecies, R0 ~ fSpecies, lrc ~ fSpecies),
-  data = zuur_growth,
-  weights = varPower(form = ~ A1 | fSpecies),
-  start = start_vec,
-  na.action = na.omit
-)
+cat("Successfully loaded GNLS model object.\n")
 
 # ------------------------------------------------------------------------------
-# 5. PREDICTION GRID & THRESHOLD SETUP
+# 4. DYNAMICALLY EXTRACT MODEL PARAMETERS & THRESHOLDS
 # ------------------------------------------------------------------------------
+cat("Extracting asymptotic parameters and computing 95% size thresholds...\n")
+
+cf <- coef(m_growth_gnls)
+
+# Reference species: Madrepora oculata
+asym_mo <- cf["Asym.(Intercept)"]
+lrc_mo  <- cf["lrc.(Intercept)"]
+rc_mo   <- exp(lrc_mo)
+
+# Desmophyllum pertusum
+asym_dp <- cf["Asym.(Intercept)"] + cf["Asym.fSpeciesDesmophyllum pertusum"]
+lrc_dp  <- cf["lrc.(Intercept)"]   + cf["lrc.fSpeciesDesmophyllum pertusum"]
+rc_dp   <- exp(lrc_dp)
+
+# Primnoa msp.
+asym_pr <- cf["Asym.(Intercept)"] + cf["Asym.fSpeciesPrimnoa msp."]
+lrc_pr  <- cf["lrc.(Intercept)"]   + cf["lrc.fSpeciesPrimnoa msp."]
+rc_pr   <- exp(lrc_pr)
+
+# 95% Asymptote Threshold Calculation
+size_95_mo <- -log(0.05) / rc_mo
+size_95_dp <- -log(0.05) / rc_dp
+size_95_pr <- -log(0.05) / rc_pr
+
+# Summary DataFrames with dynamic text formatting
 asym_df <- data.frame(
-  fSpecies = factor(c("D. pertusum", "Madrepora oculata", "Primnoa msp."),
-                    levels = c("D. pertusum", "Madrepora oculata", "Primnoa msp.")),
-  asym_val = c(0.1112, 0.0328, 0.0699)
+  fSpecies   = factor(group_levels, levels = group_levels),
+  asym_val   = c(asym_mo, asym_dp, asym_pr),
+  label_text = sprintf("Asym: %.3f yr⁻¹", c(asym_mo, asym_dp, asym_pr))
 )
 
 size_thresholds <- data.frame(
-  fSpecies = factor(c("D. pertusum", "Madrepora oculata", "Primnoa msp."),
-                    levels = c("D. pertusum", "Madrepora oculata", "Primnoa msp.")),
-  asym_size = c(35.9, 59.9, 187.8),
-  label_text = c("35.9 cm²", "59.9 cm²", "187.8 cm²")
+  fSpecies   = factor(group_levels, levels = group_levels),
+  asym_size  = c(size_95_mo, size_95_dp, size_95_pr),
+  label_text = paste0(round(c(size_95_mo, size_95_dp, size_95_pr), 1), " cm²")
 )
 
-# Generate smooth prediction curve grid bounded up to 300 cm²
-new_data <- expand.grid(
-  A1 = seq(min(zuur_growth$A1, na.rm = TRUE), 300, length.out = 300),
-  fSpecies = levels(zuur_growth$fSpecies)
-)
-new_data$pred <- predict(m_gnls_final, newdata = new_data)
-
 # ------------------------------------------------------------------------------
-# 6. GRAPHICAL STYLING & ECOGRAPHY THEME SETUP
+# 6. BUILD ECOGRAPHY PUBLICATION FIGURE
 # ------------------------------------------------------------------------------
-species_colours <- c(
-  "D. pertusum"        = "#B63679",
-  "Madrepora oculata"  = "#440154",
-  "Primnoa msp."       = "#FB9F3A"
-)
+cat("Assembling publication graphic...\n")
 
-species_labels_expr <- c(
-  "D. pertusum"        = expression(italic("D. pertusum")),
-  "Madrepora oculata"  = expression(italic("M. oculata")),
-  "Primnoa msp."       = expression(italic("Primnoa") ~ "msp.")
-)
+x_breaks <- seq(0, 300, by = 50)
+y_breaks <- seq(-0.2, 0.5, by = 0.1)
 
-x_breaks <- c(0, 50, 100, 150, 200, 250, 300)
-x_labels <- c("0", "50", "100", "150", "200", "250", "300")
-
-y_breaks <- c(0, 0.0328, 0.0699, 0.1112, 0.2, 0.4)
-y_labels <- c("0", "0.033", "0.070", "0.111", "0.2", "0.4")
-
-# ------------------------------------------------------------------------------
-# 7. BUILD PUBLICATION PLOT
-# ------------------------------------------------------------------------------
-cat("Assembling final publication figure...\n")
-
-plot_ecography <- ggplot(zuur_growth, aes(x = A1, y = RGR_Planar, color = fSpecies)) +
+plot_growth_pub <- ggplot(df_growth, aes(x = A1, y = RGR_Planar, color = fSpecies)) +
   
   # Raw observations
-  geom_point(alpha = 0.25, size = 1.1, stroke = 0) +
+  geom_point(alpha = 0.30, size = 1.2, stroke = 0) +
   
-  # Fitted non-linear growth trajectories
-  geom_line(data = new_data, aes(y = pred), linewidth = 0.9) +
+  # Fitted non-linear SSasymp trajectories
+  geom_line(data = new_data, aes(y = pred), linewidth = 0.9, show.legend = TRUE) +
   
-  # Horizontal baseline asymptotes
+  # Horizontal baseline asymptotes (Asym plateau)
   geom_hline(
     data = asym_df,
     aes(yintercept = asym_val, color = fSpecies),
-    linetype = "dashed", linewidth = 0.4, alpha = 0.8
+    linetype = "dashed", linewidth = 0.4, alpha = 0.8,
+    show.legend = FALSE
   ) +
   
-  # Vertical ontogenetic threshold markers
+  # Vertical 95% threshold size markers
   geom_vline(
     data = size_thresholds,
     aes(xintercept = asym_size, color = fSpecies),
-    linetype = "dotted", linewidth = 0.5, alpha = 0.85
+    linetype = "dotted", linewidth = 0.5, alpha = 0.85,
+    show.legend = FALSE
   ) +
   
-  # Rotated threshold value labels anchored near top
+  # Vertical threshold labels (anchored near top)
   geom_text(
     data = size_thresholds,
     aes(x = asym_size, y = 0.48, label = label_text, color = fSpecies),
     angle = 90,
     vjust = -0.4,
     hjust = 1,
+    size = 2.5,
+    fontface = "bold",
+    show.legend = FALSE
+  ) +
+  
+  # Horizontal asymptote labels (anchored near right edge)
+  geom_text(
+    data = asym_df,
+    aes(x = 295, y = asym_val, label = label_text, color = fSpecies),
+    hjust = 1,
+    vjust = -0.4,
     size = 2.4,
     fontface = "bold",
     show.legend = FALSE
   ) +
   
-  # Scales mapping
+  # Scale and Color Mapping
   scale_color_manual(
-    values = species_colours,
+    values = species_palette,
     labels = species_labels_expr
   ) +
-  scale_x_continuous(breaks = x_breaks, labels = x_labels) +
-  scale_y_continuous(breaks = y_breaks, labels = y_labels) +
+  scale_x_continuous(breaks = x_breaks) +
+  scale_y_continuous(breaks = y_breaks, labels = sprintf("%.1f", y_breaks)) +
+  coord_cartesian(xlim = c(0, 300), ylim = c(-0.22, 0.52)) +
   
-  coord_cartesian(xlim = c(0, 300), ylim = c(0, 0.55)) +
-  
+  # Axis Labels
   labs(
-    x = expression("Initial planar area (cm"^2*")"),
-    y = expression("Annualized Relative Growth Rate (RGR yr"^-1*")"),
+    x = expression(paste("Initial Planar Area ", A[1], " (cm"^2*")")),
+    y = expression(paste("Annualized Relative Growth Rate (RGR yr"^-1*")")),
     color = NULL
   ) +
   
-  theme_classic(base_size = 8) +
+  # Ecography Clean Theme
+  theme_classic(base_size = 8, base_family = FONT_FAMILY) +
   theme(
     legend.position   = "top",
     legend.key        = element_blank(),
-    legend.key.width  = unit(5, "mm"),
-    legend.text       = element_text(size = 7),
-    axis.title        = element_text(face = "bold", size = 8),
-    axis.text         = element_text(color = "black", size = 6.5),
-    axis.line         = element_line(linewidth = 0.35),
-    axis.ticks        = element_line(linewidth = 0.35)
+    legend.key.width  = unit(8, "mm"),
+    legend.text       = element_text(size = 8, face = "italic"),
+    axis.title        = element_text(face = "bold", size = 8.5),
+    axis.text         = element_text(color = "black", size = 7.5),
+    axis.line         = element_line(linewidth = 0.4),
+    axis.ticks        = element_line(linewidth = 0.4)
   )
 
 # ------------------------------------------------------------------------------
-# 8. EXPORT HIGH-RESOLUTION PNG
+# 7. EXPORT HIGH-RESOLUTION GRAPHIC
 # ------------------------------------------------------------------------------
-dir.create(dirname(output_fig), recursive = TRUE, showWarnings = FALSE)
+dir.create(dirname(output_fig_path), recursive = TRUE, showWarnings = FALSE)
 
 ggsave(
-  filename = output_fig, 
-  plot     = plot_ecography,
-  width    = 85, 
-  height   = 70, 
+  filename = output_fig_path, 
+  plot     = plot_growth_pub,
+  width    = 110, 
+  height   = 90, 
   units    = "mm", 
   dpi      = 600, 
-  type     = "cairo"
+  device   = ragg::agg_png,
+  bg       = "white"
 )
 
-cat("Successfully generated and exported:\n ", output_fig, "\n")
 
-dir.create(file.path("outputs", "models"), recursive = TRUE, showWarnings = FALSE)
-saveRDS(m_gnls_final, file.path("outputs", "models", "m_gnls_final.rds"))
+cat("\n======================================================================\n")
+cat("Script 05 Execution Complete!\n")
+cat("Publication figure saved to:\n  ", output_fig_path, "\n")
+cat("======================================================================\n")
