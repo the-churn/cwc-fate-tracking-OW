@@ -31,9 +31,9 @@ library(ragg)
 # 2. CONFIGURATION & FILE PATHS
 # ------------------------------------------------------------------------------
 # Base directory path
-base_dir <- "D:/PhD_Data(Large)/06_Final_Analysis/Master_Dataset"
+base_dir <- "D:/PhD_Data(Large)/Submission_Dataset/"
 
-input_xlsx_path <- file.path(base_dir, "Error_Propagation/Master_CWC_Tracked_MDC.xlsx")
+input_xlsx_path <- file.path(base_dir, "Master_CWC_Tracked_MDC.xlsx")
 output_fig_path <- file.path(base_dir, "Figures/Figure1_Perfect_CWC_Combined.png")
 
 # Global aesthetic & plotting parameters
@@ -100,10 +100,10 @@ stats_summary_row1 <- master_long %>%
   ) %>%
   mutate(
     p_label = case_when(
-      is.na(ks_p)  ~ "p == NA",
-      ks_p < 0.001 ~ "p < 0.001",
-      TRUE         ~ paste0("p == ", round(ks_p, 3))
-    ),
+  is.na(ks_p)  ~ "p = NA",
+  ks_p < 0.001 ~ "p < 0.001",
+  TRUE         ~ paste0("p = ", round(ks_p, 3))
+),
     ks_label = if_else(is.na(ks_stat), "D == NA", paste0("D == ", round(ks_stat, 2)))
   )
 
@@ -245,8 +245,13 @@ make_density_plot <- function(grp_name, tag) {
   sub_stats  <- stats_summary_row1 %>% filter(Group == grp_name)
   col_22     <- species_palette[[grp_name]]
   
-  n_text  <- paste0("n: ", sub_stats$n_15, " %->% ", sub_stats$n_22)
-  ks_text <- paste0("KS:~italic(D) == ", round(sub_stats$ks_stat, 2), "*','~", sub_stats$p_label)
+  # Plain text, stacked with \n — no plotmath, no parse=TRUE needed.
+  # This is what makes it look "neat": ggplot's native text layout handles
+  # line spacing itself instead of us fighting atop() nesting.
+  n_text  <- paste0("n: ", sub_stats$n_15, " \u2192 ", sub_stats$n_22)  # \u2192 = "→"
+  ks_text <- paste0("KS: D = ", round(sub_stats$ks_stat, 2))
+  p_text  <- sub_stats$p_label
+  stats_block <- paste(n_text, ks_text, p_text, sep = "\n")
 
   ggplot(sub_data, aes(x = Log_Area)) +
     geom_density(data = filter(sub_data, Year == "2015"),
@@ -255,10 +260,12 @@ make_density_plot <- function(grp_name, tag) {
                  fill = col_22, color = col_22, linetype = "solid", alpha = 0.4, linewidth = 0.5) +
     geom_vline(xintercept = log(sub_stats$med_15), color = c_2015_line, linetype = "dashed", linewidth = 0.5) +
     geom_vline(xintercept = log(sub_stats$med_22), color = col_22,      linetype = "solid",  linewidth = 0.5) +
-    annotate("text", x = -Inf, y = Inf, label = n_text, parse = TRUE,
-             size = 2.4, vjust = 1.8, hjust = -0.1, color = "black", family = FONT_FAMILY) +
-    annotate("text", x = -Inf, y = Inf, label = ks_text, parse = TRUE,
-             size = 2.1, vjust = 3.5, hjust = -0.1, color = "grey20", family = FONT_FAMILY) +
+    # EDIT vjust: 1 = flush against the top of the panel; raise slightly (e.g. 1.1–1.3) for a small margin
+    # EDIT lineheight: gap between the 3 lines — 0.9 is close to your reference image
+    # EDIT size: font size of the whole block
+    annotate("text", x = -Inf, y = Inf, label = stats_block,
+             size = 2.3, hjust = -0.1, vjust = 1.15, lineheight = 0.9,
+             color = "black", family = FONT_FAMILY) +
     facet_wrap(~Group, labeller = strip_labeller) +
     scale_x_continuous(breaks = log(c(1, 10, 100, 1000)), labels = scales::comma(c(1, 10, 100, 1000)), limits = log(c(0.8, 2500))) +
     coord_cartesian(clip = "off") +
@@ -270,9 +277,13 @@ make_density_plot <- function(grp_name, tag) {
 # 6. GENERATE ROW 1 PANELS (PANELS A, B, C)
 # ------------------------------------------------------------------------------
 cat("Building Row 1 density distribution plots...\n")
-p1 <- make_density_plot("Madrepora oculata", "A")
-p2 <- make_density_plot("Desmophyllum pertusum", "B") + theme(axis.title.y = element_blank(), axis.text.y = element_blank())
-p3 <- make_density_plot("Primnoa msp.", "C") + theme(axis.title.y = element_blank(), axis.text.y = element_blank())
+# x-axis title is identical across A-C, so it's shown only once, under the middle panel
+p1 <- make_density_plot("Madrepora oculata", "A") + 
+  theme(axis.title.x = element_blank())
+p2 <- make_density_plot("Desmophyllum pertusum", "B") + 
+  theme(axis.title.y = element_blank(), axis.text.y = element_blank())
+p3 <- make_density_plot("Primnoa msp.", "C") + 
+  theme(axis.title.y = element_blank(), axis.text.y = element_blank(), axis.title.x = element_blank())
 
 # ------------------------------------------------------------------------------
 # 7. GENERATE ROW 2 PANELS (PANELS D, E, F)
@@ -290,14 +301,30 @@ p1_growth <- ggplot(df_growth, aes(x = Species, y = Annual_Area_Change)) +
   geom_segment(data = mdc_values, aes(x = as.numeric(Species) - 0.22, xend = as.numeric(Species) + 0.22,
                                       y = -mean_mdc, yend = -mean_mdc), linetype = "dashed", color = "black", linewidth = 0.35) +
   geom_signif(
-    comparisons = comparison_list, annotations = dunn_labels,
-    step_increase = 0.08, textsize = 2.5, tip_length = 0.015, linewidth = 0.35, color = "black"
+    comparisons = comparison_list, 
+    annotations = dunn_labels,
+    # EDIT: absolute y-position of each bracket, in cm² yr⁻¹ — order matches comparison_list:
+    #   1) Madrepora–Desmophyllum, 2) Desmophyllum–Primnoa, 3) Madrepora–Primnoa
+    # Your data currently top out ~63 (Primnoa outlier), so these start just above that
+    # and step up by 8 — raise/lower all three together to move the whole stack up/down,
+    # or change the gaps between them individually
+    y_position  = c(58, 66, 74),
+    textsize    = 3.0,
+    vjust       = 0.3,
+    tip_length  = 0.02, 
+    linewidth   = 0.35, 
+    color       = "black"
   ) +
   scale_fill_manual(values = species_palette) +
   scale_color_manual(values = species_palette) +
   scale_alpha_manual(values = c("FALSE" = 0.12, "TRUE" = 0.80)) +
   scale_x_discrete(labels = p1_labels) +
-  scale_y_continuous(expand = expansion(mult = c(0.08, 0.22))) +
+  #raise up if clipping observed in the signif levels
+  scale_y_continuous(
+    breaks = seq(0, 75, by = 25),          # EDIT: keeps gridlines at 0/25/50/75, no stray 100 line
+    limits = c(NA, 80),                     # EDIT: hard ceiling — top bracket sits at 84, so 90 leaves ~6 units of clean air above it without ballooning the panel
+    expand = expansion(mult = c(0.08, 0))   # top padding now handled by 'limits' above, not expansion
+  ) +
   coord_cartesian(clip = "off") +
   labs(
     tag = "D",
@@ -316,7 +343,7 @@ p2_recruitment <- ggplot(summary_stats_row2, aes(x = Species, y = recruitment_ra
   coord_cartesian(clip = "off") +
   labs(
     tag = "E",
-    y = "Recruitment rate (% of 2022 total)"
+    y = "Recruitment rate (%)"
   ) +
   publication_theme
 
@@ -331,7 +358,7 @@ p3_mortality <- ggplot(summary_stats_row2, aes(x = Species, y = mortality_rate, 
   coord_cartesian(clip = "off") +
   labs(
     tag = "F",
-    y = "Mortality rate (% of 2015 total)"
+    y = "Mortality rate (%)"
   ) +
   publication_theme
 
@@ -402,6 +429,117 @@ ggsave(
 cat("\n======================================================================\n")
 cat("Script 03 execution complete!\n")
 cat("Master figure exported to:\n ", output_fig_path, "\n")
+cat("======================================================================\n")
+
+# ==============================================================================
+# 10. REVIEWER AUDIT STATISTICAL SUMMARY TABLES
+# ==============================================================================
+cat("\n======================================================================\n")
+cat("            COMPREHENSIVE REVIEWER AUDIT STATISTICAL SUMMARY            \n")
+cat("======================================================================\n\n")
+
+# ------------------------------------------------------------------------------
+# A. TABLE 1: SIZE STRUCTURE PERCENTILES & KS TEST STATISTICS (PANELS A-C)
+# ------------------------------------------------------------------------------
+table1_size_audit <- master_long %>%
+  group_by(Group, Year) %>%
+  summarise(
+    n       = n(),
+    p10_cm2 = quantile(Area, 0.10, na.rm = TRUE),
+    p50_cm2 = median(Area, na.rm = TRUE),
+    p90_cm2 = quantile(Area, 0.90, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  pivot_wider(
+    names_from  = Year,
+    values_from = c(n, p10_cm2, p50_cm2, p90_cm2)
+  ) %>%
+  left_join(stats_summary_row1 %>% select(Group, ks_stat, ks_p), by = "Group") %>%
+  mutate(
+    ks_D     = round(ks_stat, 3),
+    ks_p_val = if_else(ks_p < 0.001, "< 0.001", as.character(round(ks_p, 4)))
+  ) %>%
+  select(
+    Species = Group, 
+    n_2015, n_2022, 
+    p10_2015 = p10_cm2_2015, p10_2022 = p10_cm2_2022,
+    p50_2015 = p50_cm2_2015, p50_2022 = p50_cm2_2022,
+    p90_2015 = p90_cm2_2015, p90_2022 = p90_cm2_2022,
+    ks_D, ks_p_val
+  )
+
+cat("--- TABLE 1: Size Class Structure Percentiles & KS Tests (Panels A-C) ---\n")
+print(as.data.frame(table1_size_audit), row.names = FALSE)
+cat("\n")
+
+# ------------------------------------------------------------------------------
+# B. TABLE 2: ANNUAL GROWTH DISTRIBUTION & POST-HOC COMPARISONS (PANEL D)
+# ------------------------------------------------------------------------------
+table2_growth_audit <- df_growth %>%
+  group_by(Species) %>%
+  summarise(
+    n_persistent   = n(),
+    mean_growth    = mean(Annual_Area_Change, na.rm = TRUE),
+    median_growth  = median(Annual_Area_Change, na.rm = TRUE),
+    p25_growth     = quantile(Annual_Area_Change, 0.25, na.rm = TRUE),
+    p75_growth     = quantile(Annual_Area_Change, 0.75, na.rm = TRUE),
+    .groups        = "drop"
+  ) %>%
+  left_join(mdc_values, by = "Species")
+
+cat("--- TABLE 2A: Growth Rate Distributions (cm² yr⁻¹) & MDC95 (Panel D) ---\n")
+print(as.data.frame(table2_growth_audit), row.names = FALSE)
+
+cat(sprintf("\nKruskal-Wallis Global Test: H = %.2f, df = %d, p = %.4e\n\n", 
+            unname(kw_test$statistic), unname(kw_test$parameter), unname(kw_test$p.value)))
+
+cat("--- TABLE 2B: Dunn's Post-Hoc Pairwise Comparisons (BH Adjusted) ---\n")
+table2_dunn_audit <- data.frame(
+  Comparison   = names(dunn_lookup),
+  P_Adjusted   = round(unname(dunn_lookup), 5),
+  Significance = p_to_stars(unname(dunn_lookup))
+)
+print(table2_dunn_audit, row.names = FALSE)
+cat("\n")
+
+# ------------------------------------------------------------------------------
+# C. TABLE 3: DEMOGRAPHIC TURNOVER & WILSON 95% CIs (PANELS E & F)
+# ------------------------------------------------------------------------------
+table3_demo_audit <- summary_stats_row2 %>%
+  mutate(
+    net_change_pct = recruitment_rate - mortality_rate
+  ) %>%
+  select(
+    Species, 
+    n_2015_total = n_2015, n_mortality, mortality_rate, mort_ci_lower, mort_ci_upper,
+    n_2022_total = n_2022, n_recruitment, recruitment_rate, rec_ci_lower, rec_ci_upper,
+    net_change_pct
+  )
+
+cat("--- TABLE 3: Demographic Rates & 95% Wilson CIs (Panels E-F) ---\n")
+print(as.data.frame(table3_demo_audit), row.names = FALSE)
+cat("\n======================================================================\n")
+
+# ------------------------------------------------------------------------------
+# D. OPTIONAL: EXPORT AUDIT TABLES TO A SINGLE CSV FILE
+# ------------------------------------------------------------------------------
+audit_csv_path <- file.path(base_dir, "Figures/Statistical_Summary_Table.csv")
+
+suppressWarnings({
+  write.table("TABLE 1: SIZE CLASS STRUCTURE & KS TESTS", audit_csv_path, row.names = FALSE, col.names = FALSE, sep = ",")
+  write.table(table1_size_audit, audit_csv_path, append = TRUE, row.names = FALSE, sep = ",")
+  
+  write.table("\nTABLE 2A: GROWTH RATE DISTRIBUTIONS", audit_csv_path, append = TRUE, row.names = FALSE, col.names = FALSE, sep = ",")
+  write.table(table2_growth_audit, audit_csv_path, append = TRUE, row.names = FALSE, sep = ",")
+  
+  write.table("\nTABLE 2B: DUNN POST-HOC PAIRWISE COMPARISONS", audit_csv_path, append = TRUE, row.names = FALSE, col.names = FALSE, sep = ",")
+  write.table(table2_dunn_audit, audit_csv_path, append = TRUE, row.names = FALSE, sep = ",")
+  
+  write.table("\nTABLE 3: DEMOGRAPHIC RATES & WILSON 95% CIs", audit_csv_path, append = TRUE, row.names = FALSE, col.names = FALSE, sep = ",")
+  write.table(table3_demo_audit, audit_csv_path, append = TRUE, row.names = FALSE, sep = ",")
+})
+
+cat("Statistical audit CSV exported to:\n ", audit_csv_path, "\n")
 cat("======================================================================\n")
 
 ```
