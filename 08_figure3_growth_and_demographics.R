@@ -1,10 +1,12 @@
 # ==============================================================================
 # Script Name:  08_figure3_growth_and_demographics.R
-# Description:  Assembles the two-panel Figure 3 for Current Biology: (A) size-
-#               at-age growth trajectories with 95% Monte Carlo CI, and (B) a
-#               ridgeline of population age demographics for 2022. Combines
-#               both panels with patchwork and exports at the journal's
-#               2-column (178 mm) print specification.
+# Description:  Assembles the two-panel Figure 3 for Current Biology: 
+#               (A) size-at-age growth trajectories with 95% Monte Carlo CI and 
+#                   vertical dashed lines at model-derived A_thresh sizes 
+#                   (34.7, 56.2, and 157.5 cm^2), and 
+#               (B) a ridgeline of population age demographics for 2022. 
+#               Combines both panels with patchwork and exports at 2-column 
+#               (178 mm) 600 DPI print specification.
 # Dependencies: ggplot2, ggridges, dplyr, readr, patchwork, grid
 # ==============================================================================
 
@@ -16,33 +18,56 @@ library(ggridges)
 library(dplyr)
 library(readr)
 library(patchwork)
-library(grid)   # unit() used in theme() below
+library(grid)   # unit() used in theme()
 
 # ------------------------------------------------------------------------------
 # 2. CONFIGURATION & FILE PATHS
 # ------------------------------------------------------------------------------
-curves_csv          <- file.path("outputs", "results", "size_age_curves.csv")
-observed_csv         <- file.path("outputs", "results", "observed_points.csv")
-final_results_csv    <- file.path("outputs", "results", "Master_Dataset_Final_MonteCarlo_Results.csv")
-figures_dir           <- file.path("outputs", "figures")
+base_dir <- "D:/PhD_Data(Large)/Submission_Dataset"
 
+figures_dir <- file.path(base_dir, "figures")
 dir.create(figures_dir, recursive = TRUE, showWarnings = FALSE)
+
+# Input Paths (from Scripts 05, 06 & 07)
+athresh_rds_path  <- file.path(base_dir, "models", "athresh_sizes.rds")
+curves_csv        <- file.path(base_dir, "results", "size_age_curves.csv")
+observed_csv      <- file.path(base_dir, "results", "observed_points.csv")
+final_results_csv <- file.path(base_dir, "results", "Master_Dataset_Final_MonteCarlo_Results.csv")
+
+# Output Figure Path
+output_fig        <- file.path(figures_dir, "Figure3_Growth_and_Demographics_2Col.png")
+
+# Default model-derived A_thresh planar areas (cm^2) from Script 05 figure
+athresh_sizes <- c(
+  "Desmophyllum pertusum" = 34.7,
+  "Madrepora oculata"     = 56.2,
+  "Primnoa msp."          = 157.5
+)
 
 # ------------------------------------------------------------------------------
 # 3. LOAD UPSTREAM OUTPUTS (SCRIPTS 06-07)
 # ------------------------------------------------------------------------------
 required_files <- c(curves_csv, observed_csv, final_results_csv)
 if (any(!file.exists(required_files))) {
-  stop("Missing upstream outputs. Run 06_monte_carlo_age_simulation.R and ",
-       "07_size_age_curves.R first.", call. = FALSE)
+  stop("Missing upstream outputs. Please run scripts 06 and 07 first.", call. = FALSE)
 }
 
+cat("Loading size-age curves and simulation results...\n")
 size_age_curves      <- read_csv(curves_csv, show_col_types = FALSE)
-observed_points        <- read_csv(observed_csv, show_col_types = FALSE)
+observed_points      <- read_csv(observed_csv, show_col_types = FALSE)
 final_master_dataset <- read_csv(final_results_csv, show_col_types = FALSE)
 
+# If Script 05 saved dynamic athresh_sizes object, load it automatically
+if (file.exists(athresh_rds_path)) {
+  cat("Loading dynamic A_thresh values from Script 05 RDS...\n")
+  athresh_sizes <- readRDS(athresh_rds_path)
+}
+
+cat("Model Area Thresholds (A_thresh):\n")
+print(athresh_sizes)
+
 # ------------------------------------------------------------------------------
-# 4. UNIFIED COLOR PALETTE (SHARED ACROSS BOTH PANELS)
+# 4. UNIFIED COLOR PALETTE & LABELS
 # ------------------------------------------------------------------------------
 coral_colors <- c(
   "Desmophyllum pertusum" = "#7A1F5C",  # dark pinkish purple
@@ -57,16 +82,28 @@ coral_labels <- c(
 )
 
 # ------------------------------------------------------------------------------
-# 5. PANEL A -- SIZE-AT-AGE GROWTH TRAJECTORIES
+# 5. INTERPOLATE AGE AT A_THRESH FOR EACH SPECIES
 # ------------------------------------------------------------------------------
-# Ontogenetic collapse-threshold ages (D. pertusum, M. oculata, Primnoa msp.):
-# the estimated age at which each species reaches its 35.9 / 59.9 / 187.8 cm^2
-# collapse-size threshold. Carried over as fixed values from the source
-# notebook -- these were originally interpolated from size_age_curves against
-# those thresholds. Recompute directly if the underlying data/model changes
-# (happy to wire that up as its own step if useful).
-collapse_threshold_ages <- c(11.91, 21.54, 20.18)
+# Computes estimated age where each species hits its A_thresh area
+athresh_df <- bind_rows(lapply(names(athresh_sizes), function(sp) {
+  target_size <- athresh_sizes[[sp]]
+  sp_curves   <- size_age_curves %>% filter(Species == sp) %>% arrange(Size)
+  
+  if (nrow(sp_curves) > 1 && !is.na(target_size)) {
+    age_interp <- approx(x = sp_curves$Size, y = sp_curves$Age_Med, xout = target_size)$y
+  } else {
+    age_interp <- NA_real_
+  }
+  
+  data.frame(Species = sp, Target_Size = target_size, Athresh_Age = age_interp)
+}))
 
+cat("\nInterpolated Ages at A_thresh:\n")
+print(athresh_df)
+
+# ------------------------------------------------------------------------------
+# 6. PANEL A -- SIZE-AT-AGE GROWTH TRAJECTORIES
+# ------------------------------------------------------------------------------
 panel_a <- ggplot(size_age_curves, aes(x = Age_Med, y = Size, color = Species, fill = Species)) +
   geom_point(
     data = observed_points,
@@ -74,10 +111,9 @@ panel_a <- ggplot(size_age_curves, aes(x = Age_Med, y = Size, color = Species, f
     alpha = 0.25, size = 0.8, inherit.aes = FALSE
   ) +
   geom_vline(
-    xintercept = collapse_threshold_ages,
-    linetype = "dashed",
-    color = c("#7A1F5C", "#3B0F4B", "#F69336"),
-    alpha = 0.6, linewidth = 0.4
+    data = athresh_df,
+    aes(xintercept = Athresh_Age, color = Species),
+    linetype = "dashed", alpha = 0.6, linewidth = 0.4
   ) +
   geom_ribbon(aes(xmin = Age_Lo95, xmax = Age_Hi95), alpha = 0.22, color = NA) +
   geom_line(linewidth = 0.8) +
@@ -108,7 +144,7 @@ panel_a <- ggplot(size_age_curves, aes(x = Age_Med, y = Size, color = Species, f
   )
 
 # ------------------------------------------------------------------------------
-# 6. PANEL B -- POPULATION AGE DEMOGRAPHICS (2022 RIDGELINE)
+# 7. PANEL B -- POPULATION AGE DEMOGRAPHICS (2022 RIDGELINE)
 # ------------------------------------------------------------------------------
 ridge_data <- final_master_dataset %>%
   filter(!is.na(Age_2022_Median), Age_2022_Median > 0, !is.na(Species)) %>%
@@ -160,7 +196,7 @@ panel_b <- ggplot(ridge_data, aes(x = Age_2022_Median, y = Species_Formatted, fi
   )
 
 # ------------------------------------------------------------------------------
-# 7. COMBINE PANELS & EXPORT (CURRENT BIOLOGY 2-COLUMN: 178 MM)
+# 8. COMBINE PANELS & EXPORT (CURRENT BIOLOGY 2-COLUMN: 178 MM)
 # ------------------------------------------------------------------------------
 cat("Assembling final two-panel figure...\n")
 
@@ -170,18 +206,15 @@ combined_figure <- (panel_a | panel_b) +
     theme = theme(plot.tag = element_text(size = 10, face = "bold", family = "sans"))
   )
 
-print(combined_figure)
-
-output_fig <- file.path(figures_dir, "Figure1_Growth_and_Demographics_2Col.PNG")
-
 ggsave(
   filename = output_fig,
   plot     = combined_figure,
   width    = 178,
   height   = 65,
   units    = "mm",
-  dpi      = 600,
-  type     = "cairo"
+  dpi      = 600
 )
 
 cat("Successfully generated and exported:\n  ", output_fig, "\n")
+cat("======================================================================\n")
+cat("Script 08 Execution Complete!\n")
