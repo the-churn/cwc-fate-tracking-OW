@@ -1,6 +1,3 @@
-Here is your complete, updated `03_CWC_master_figure1.R` script, maintained in your exact structure, commenting style, and variable naming format, with the panel clipping and headroom fixes fully incorporated:
-
-```R
 # ==============================================================================
 # Script Name:  03_CWC_master_figure1.R
 # Description:  Loads master tracked cold-water coral dataset (from Script 02),
@@ -541,5 +538,3 @@ suppressWarnings({
 
 cat("Statistical audit CSV exported to:\n ", audit_csv_path, "\n")
 cat("======================================================================\n")
-
-```
