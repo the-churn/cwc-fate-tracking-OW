@@ -1,9 +1,9 @@
 # ==============================================================================
 # Script Name:  05_growth_rate_publication_figure.R
 # Description:  Loads the fitted heteroscedastic asymptotic (GNLS) growth model
-#                from Script 04, extracts biological thresholds dynamically, 
-#                and generates an Ecography-styled publication figure mapping 
-#                relative growth rate (RGR) across initial sizes.
+#               from Script 04, extracts biological thresholds dynamically, 
+#               and generates an Ecography-styled publication figure mapping 
+#               relative growth rate (RGR) across initial sizes.
 # Dependencies: readxl, dplyr, nlme, ggplot2, ragg
 # ==============================================================================
 
@@ -19,7 +19,7 @@ library(ragg)
 # ------------------------------------------------------------------------------
 # 2. CONFIGURATION & FILE PATHS
 # ------------------------------------------------------------------------------
-base_dir       <- "D:/PhD_Data(Large)/Submission_Dataset"
+base_dir        <- "D:/PhD_Data(Large)/Submission_Dataset"
 
 input_xlsx_path <- file.path(base_dir, "Master_CWC_Tracked_MDC.xlsx")
 model_rds_path  <- file.path(base_dir, "models", "m_growth_gnls_SSasymp.rds")
@@ -52,7 +52,7 @@ df_clean <- df_raw %>%
     Group = case_when(
       Species == "Madrepora oculata" ~ "Madrepora oculata",
       Species %in% c("D. pertusum", "Desmophyllum pertusum") ~ "Desmophyllum pertusum",
-      Species %in% c("Primnoa msp.5", "Primnoa msp.1") ~ "Primnoa msp.",
+      Species %in% c("Primnoa msp.5", "Primnoa msp.1", "Primnoa msp.") ~ "Primnoa msp.",
       TRUE ~ NA_character_
     )
   ) %>%
@@ -110,6 +110,22 @@ size_thresholds <- data.frame(
   asym_size  = c(size_95_mo, size_95_dp, size_95_pr),
   label_text = paste0(round(c(size_95_mo, size_95_dp, size_95_pr), 1), " cm²")
 )
+
+# ------------------------------------------------------------------------------
+# 5. GENERATE MODEL PREDICTION GRID
+# ------------------------------------------------------------------------------
+cat("Generating model prediction grid across full empirical size range...\n")
+
+# Dynamically set prediction upper bound to max colony size in dataset
+max_size <- max(df_growth$A1, na.rm = TRUE)
+
+new_data <- expand.grid(
+  A1 = seq(0, max_size, length.out = 1000),
+  fSpecies = factor(group_levels, levels = group_levels)
+) %>%
+  mutate(
+    pred = predict(m_growth_gnls, newdata = .)
+  )
 
 # ------------------------------------------------------------------------------
 # 6. BUILD ECOGRAPHY PUBLICATION FIGURE
@@ -210,7 +226,6 @@ ggsave(
   device   = ragg::agg_png,
   bg       = "white"
 )
-
 
 cat("\n======================================================================\n")
 cat("Script 05 Execution Complete!\n")
