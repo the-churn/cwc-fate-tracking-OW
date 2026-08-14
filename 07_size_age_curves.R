@@ -2,9 +2,8 @@
 # Script Name:  07_size_age_curves.R
 # Description:  Builds per-species size-at-age curves (median + 95% Monte Carlo
 #               CI) by inverting the GNLS growth model across a log-spaced size
-#               grid, using the parameter draws and audited dataset produced by
-#               script 06. Also assembles the observed colony-level age-size
-#               points used as an overlay in the script 08 figure.
+#               grid, using parameter draws and audited data from script 06. 
+#               Also exports observed colony-level age-size points for plotting.
 # Dependencies: dplyr, readr
 # ==============================================================================
 
@@ -17,54 +16,63 @@ library(readr)
 # ------------------------------------------------------------------------------
 # 2. CONFIGURATION & FILE PATHS
 # ------------------------------------------------------------------------------
-mc_inputs_path       <- file.path("outputs", "models", "monte_carlo_inputs.rds")
-final_results_csv    <- file.path("outputs", "results", "Master_Dataset_Final_MonteCarlo_Results.csv")
-curves_out_csv        <- file.path("outputs", "results", "size_age_curves.csv")
-observed_out_csv       <- file.path("outputs", "results", "observed_points.csv")
+base_dir <- "D:/PhD_Data(Large)/Submission_Dataset"
 
-dir.create(file.path("outputs", "results"), recursive = TRUE, showWarnings = FALSE)
+# Ensure output directory exists
+dir.create(file.path(base_dir, "results"), recursive = TRUE, showWarnings = FALSE)
 
-curve_n_sims <- 5000   # draws used per grid point; keep in sync with N_SIMS in script 06
+# Input Paths (from Script 06)
+mc_inputs_path     <- file.path(base_dir, "models", "monte_carlo_inputs.rds")
+final_results_csv  <- file.path(base_dir, "results", "Master_Dataset_Final_MonteCarlo_Results.csv")
+
+# Output Paths (for Script 08)
+curves_out_csv     <- file.path(base_dir, "results", "size_age_curves.csv")
+observed_out_csv   <- file.path(base_dir, "results", "observed_points.csv")
+
+curve_n_sims <- 5000   # draws used per grid point; matches N_SIMS in script 06
 curve_grid_n <- 40     # points per species along the log-spaced size grid
 
 # ------------------------------------------------------------------------------
 # 3. LOAD UPSTREAM OUTPUTS (SCRIPT 06)
 # ------------------------------------------------------------------------------
 if (!file.exists(mc_inputs_path) || !file.exists(final_results_csv)) {
-  stop("Missing outputs from script 06. Run 06_monte_carlo_age_simulation.R first.", call. = FALSE)
+  stop("Missing outputs from script 06. Please run 06_monte_carlo_age_simulation.R first.", call. = FALSE)
 }
 
+cat("Loading Monte Carlo outputs from Script 06...\n")
 mc_inputs         <- readRDS(mc_inputs_path)
 stand_age_audited <- mc_inputs$stand_age_audited
 param_draws       <- mc_inputs$param_draws
 A0_species        <- mc_inputs$A0_species
-valid_species      <- mc_inputs$valid_species
+valid_species     <- mc_inputs$valid_species
 
 final_master_dataset <- read_csv(final_results_csv, show_col_types = FALSE)
 
 # ------------------------------------------------------------------------------
 # 4. AGE-INTEGRATION HELPERS
 # ------------------------------------------------------------------------------
-# Duplicated from script 06 so this script can run standalone from saved
-# outputs (no need to re-fit or re-source anything). Keep in sync with script
-# 06 if the growth-model form or parameter names ever change.
+# Extract species-specific parameters for one Monte Carlo draw
+# Matches fitted GNLS contrasts: Madrepora oculata = Intercept Baseline
 get_draw_params <- function(draw_row, species_name) {
   if (!species_name %in% valid_species) return(NULL)
 
   asym <- draw_row["Asym.(Intercept)"] + switch(species_name,
-    "Madrepora oculata"     = draw_row["Asym.fSpeciesMadrepora oculata"],
-    "Primnoa msp."          = draw_row["Asym.fSpeciesPrimnoa msp."],
-    "Desmophyllum pertusum" = 0)
+    "Madrepora oculata"     = 0,
+    "Desmophyllum pertusum" = draw_row["Asym.fSpeciesDesmophyllum pertusum"],
+    "Primnoa msp."          = draw_row["Asym.fSpeciesPrimnoa msp."]
+  )
 
   r0 <- draw_row["R0.(Intercept)"] + switch(species_name,
-    "Madrepora oculata"     = draw_row["R0.fSpeciesMadrepora oculata"],
-    "Primnoa msp."          = draw_row["R0.fSpeciesPrimnoa msp."],
-    "Desmophyllum pertusum" = 0)
+    "Madrepora oculata"     = 0,
+    "Desmophyllum pertusum" = draw_row["R0.fSpeciesDesmophyllum pertusum"],
+    "Primnoa msp."          = draw_row["R0.fSpeciesPrimnoa msp."]
+  )
 
   lrc <- draw_row["lrc.(Intercept)"] + switch(species_name,
-    "Madrepora oculata"     = draw_row["lrc.fSpeciesMadrepora oculata"],
-    "Primnoa msp."          = draw_row["lrc.fSpeciesPrimnoa msp."],
-    "Desmophyllum pertusum" = 0)
+    "Madrepora oculata"     = 0,
+    "Desmophyllum pertusum" = draw_row["lrc.fSpeciesDesmophyllum pertusum"],
+    "Primnoa msp."          = draw_row["lrc.fSpeciesPrimnoa msp."]
+  )
 
   list(asym = asym, r0 = r0, lrc = lrc)
 }
@@ -132,15 +140,20 @@ cat("Saved size-age curves to:\n  ", curves_out_csv, "\n")
 # ------------------------------------------------------------------------------
 # 6. OBSERVED (COLONY-LEVEL) AGE-SIZE POINTS
 # ------------------------------------------------------------------------------
+cat("Extracting colony-level observed age-size points...\n")
+
 observed_points <- bind_rows(
   final_master_dataset %>%
     filter(!is.na(Age_2015_Median)) %>%
-    transmute(Species, Size = A1, Age = Age_2015_Median),
+    transmute(Species, Size = A1, Age = Age_2015_Median, Year = 2015),
   final_master_dataset %>%
     filter(!is.na(Age_2022_Median)) %>%
-    transmute(Species, Size = A2, Age = Age_2022_Median)
+    transmute(Species, Size = A2, Age = Age_2022_Median, Year = 2022)
 ) %>%
   filter(Species %in% valid_species, !is.na(Size), Size > 0)
 
 write_csv(observed_points, observed_out_csv)
 cat("Saved observed age-size points to:\n  ", observed_out_csv, "\n")
+
+cat("======================================================================\n")
+cat("Script 07 Execution Complete!\n")
