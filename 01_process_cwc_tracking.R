@@ -157,13 +157,19 @@ master_CWC_flagged <- full_join(agg_2015, agg_2022, by = "Join_ID", suffix = c("
       TRUE                ~ "Unknown"
     ),
     
-    # Fill missing spatial values for non-overlapping years
+    # Fill missing spatial values for non-overlapping years.
+    # Exception: for "Occluded" genets, a 2022 value of 0 would misrepresent
+    # "not measured" as "measured and found empty" -- keep these NA so any
+    # arithmetic on them (change, ratio, growth rate, MDC) propagates NA
+    # automatically instead of silently fabricating a number, whether that
+    # arithmetic happens here or in a downstream script (e.g. Script 02) that
+    # reads these columns directly.
     Area_2015      = replace_na(Area_2015, 0),
-    Area_2022      = replace_na(Area_2022, 0),
+    Area_2022      = ifelse(fate == "Occluded", NA_real_, replace_na(Area_2022, 0)),
     Surf_Area_2015 = replace_na(Surf_Area_2015, 0),
-    Surf_Area_2022 = replace_na(Surf_Area_2022, 0),
+    Surf_Area_2022 = ifelse(fate == "Occluded", NA_real_, replace_na(Surf_Area_2022, 0)),
     Perimeter_2015 = replace_na(Perimeter_2015, 0),
-    Perimeter_2022 = replace_na(Perimeter_2022, 0),
+    Perimeter_2022 = ifelse(fate == "Occluded", NA_real_, replace_na(Perimeter_2022, 0)),
     Centroid_x     = coalesce(Centroid_x_2015, Centroid_x_2022),
     Centroid_y     = coalesce(Centroid_y_2015, Centroid_y_2022),
     
