@@ -39,9 +39,9 @@ output_fig        <- file.path(figures_dir, "Figure3_Growth_and_Demographics_2Co
 
 # Default model-derived A_thresh planar areas (cm^2) from Script 05 figure
 athresh_sizes <- c(
-  "Desmophyllum pertusum" = 34.7,
-  "Madrepora oculata"     = 56.2,
-  "Primnoa msp."          = 157.5
+  "Desmophyllum pertusum" = 33.4,
+  "Madrepora oculata"     = 56.7,
+  "Primnoa msp."          = 155.4
 )
 
 # ------------------------------------------------------------------------------
