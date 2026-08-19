@@ -5,6 +5,11 @@
 #               testing, computes Wilson score confidence intervals for dynamic 
 #               rates, and builds a high-resolution publication-ready 6-panel 
 #               composite figure (Panels A-F).
+#               Mortality/recruitment denominators exclude genets with
+#               state_transition == "occluded" (present 2015, not assessable
+#               in 2022); occluded counts are reported separately in the
+#               reviewer audit table (Section 10) rather than silently
+#               dropped from view.
 # Dependencies: readxl, dplyr, tidyr, stringr, ggplot2, patchwork, scales, 
 #               dunn.test, ggsignif, Hmisc, ragg
 # ==============================================================================
@@ -66,7 +71,11 @@ df_primnoa   <- df %>%
   filter(Species %in% c("Primnoa msp.5", "Primnoa msp.1")) %>% 
   mutate(Group = "Primnoa msp.")
 
-# Reshape into long-format for density probability distributions
+# Reshape into long-format for density probability distributions.
+# NOTE: for occluded genets, Area_2022 is NA (Script 02), so pivot_longer
+# carries that NA into "Area" for the 2022 row and filter(Area > 0) drops it
+# automatically -- their real Area_2015 value is correctly retained. No
+# occlusion-specific handling needed here.
 master_long <- bind_rows(df_madrepora, df_pertusum, df_primnoa) %>%
   select(TagLab.Genet.Id, Group, Area_2015, Area_2022) %>%
   pivot_longer(cols = c(Area_2015, Area_2022), names_to = "Year", values_to = "Area") %>%
@@ -123,7 +132,13 @@ growth_data <- df %>%
 
 df_growth <- growth_data %>% filter(state_transition == "persistence")
 
-# Demographic summaries and Wilson score interval estimation
+# Demographic summaries and Wilson score interval estimation.
+# NOTE ON OCCLUSION: n_2015/n_2022 intentionally exclude
+# state_transition == "occluded" from both the mortality and recruitment
+# denominators -- correct now that occlusion is its own category. These
+# colonies have no resolved 2022 fate, so they're censored (excluded from
+# both numerator and denominator) rather than assumed dead. n_occluded keeps
+# them visible in the audit output instead of disappearing silently.
 summary_stats_row2 <- growth_data %>%
   group_by(Species) %>%
   summarise(
@@ -132,6 +147,7 @@ summary_stats_row2 <- growth_data %>%
     n_persistence = sum(state_transition == "persistence"),
     n_mortality   = sum(state_transition == "mortality"),
     n_recruitment = sum(state_transition == "recruitment"),
+    n_occluded    = sum(state_transition == "occluded"),
     mean_growth   = mean(Annual_Area_Change[state_transition == "persistence"], na.rm = TRUE),
     mean_mdc      = mean(MDC95_Annual[state_transition == "persistence"], na.rm = TRUE),
     .groups       = "drop"
@@ -147,7 +163,10 @@ summary_stats_row2 <- summary_stats_row2 %>%
     mort_ci_upper    = mort_ci[, "Upper"],
     recruitment_rate = rec_ci[, "PointEst"],
     rec_ci_lower     = rec_ci[, "Lower"],
-    rec_ci_upper     = rec_ci[, "Upper"]
+    rec_ci_upper     = rec_ci[, "Upper"],
+    # Share of the full 2015 cohort (resolved + occluded) that couldn't be
+    # assessed in 2022. Reported for transparency only -- not used in any CI.
+    occlusion_rate   = 100 * n_occluded / (n_2015 + n_occluded)
   )
 
 mdc_values <- summary_stats_row2 %>% select(Species, mean_mdc)
@@ -508,13 +527,22 @@ table3_demo_audit <- summary_stats_row2 %>%
   ) %>%
   select(
     Species, 
-    n_2015_total = n_2015, n_mortality, mortality_rate, mort_ci_lower, mort_ci_upper,
+    # Renamed from n_2015_total: this is the RESOLVED 2015 cohort
+    # (persistence + mortality) used as the mortality-rate denominator.
+    # Occluded colonies are broken out separately (n_occluded) below rather
+    # than being folded into either count.
+    n_2015_resolved = n_2015, n_mortality, mortality_rate, mort_ci_lower, mort_ci_upper,
     n_2022_total = n_2022, n_recruitment, recruitment_rate, rec_ci_lower, rec_ci_upper,
+    n_occluded, occlusion_rate,
     net_change_pct
   )
 
 cat("--- TABLE 3: Demographic Rates & 95% Wilson CIs (Panels E-F) ---\n")
 print(as.data.frame(table3_demo_audit), row.names = FALSE)
+cat(sprintf(
+  "\nTotal colonies occluded in the 2022 survey, excluded from mortality/recruitment denominators: %d\n",
+  sum(table3_demo_audit$n_occluded)
+))
 cat("\n======================================================================\n")
 
 # ------------------------------------------------------------------------------
