@@ -134,70 +134,73 @@ saveRDS(m_growth_gnls, file = output_rds_path)
 cat(" Model object saved to:\n  ", output_rds_path, "\n")
 
 # ------------------------------------------------------------------------------
-# 7. MODEL DIAGNOSTICS (NORMALIZED RESIDUALS)
+# 7. MODEL DIAGNOSTICS: BASELINE (m_0) VS WINNING MODEL
 # ------------------------------------------------------------------------------
-cat("\nExtracting normalized residuals and building diagnostic dashboard...\n")
+cat("\nExtracting residuals for Baseline vs. Winning Model comparison...\n")
 
-res_df <- df_growth %>%
+# Combine residuals into a single plotting data frame
+df_diag_m0 <- df_growth %>%
   mutate(
-    Fitted    = fitted(m_growth_gnls),
-    NormResid = residuals(m_growth_gnls, type = "normalized"),
-    RawResid  = residuals(m_growth_gnls, type = "response")
+    Resid = residuals(m_0, type = "pearson"),
+    Model = "1. Baseline Model (Homoscedastic m_0)"
   )
+
+df_diag_win <- df_growth %>%
+  mutate(
+    Resid = residuals(m_growth_gnls, type = "normalized"),
+    Model = "2. Winning Model (VarConstPower_Global)"
+  )
+
+df_diag_all <- bind_rows(df_diag_m0, df_diag_win) %>%
+  mutate(Model = factor(Model, levels = c(
+    "1. Baseline Model (Homoscedastic m_0)", 
+    "2. Winning Model (VarConstPower_Global)"
+  )))
 
 base_diag_theme <- theme_classic(base_family = FONT_FAMILY) +
   theme(
     plot.title   = element_text(face = "bold", size = 11),
     axis.text    = element_text(size = 9, color = "black"),
     axis.title   = element_text(size = 10, face = "bold"),
-    strip.text   = element_text(face = "bold.italic", size = 10),
+    strip.text   = element_text(face = "bold", size = 10),
     panel.border = element_rect(color = "black", fill = NA, linewidth = 0.5)
   )
 
-# Diagnostic Plot A: Normalized Residuals vs Fitted Values
-p_res_fit <- ggplot(res_df, aes(x = Fitted, y = NormResid, color = fSpecies)) +
-  geom_point(alpha = 0.55, size = 1.6) +
-  geom_hline(yintercept = 0, linetype = "dashed", color = "black", linewidth = 0.6) +
-  geom_hline(yintercept = c(-2, 2), linetype = "dotted", color = "red", linewidth = 0.5) +
-  scale_color_manual(values = species_palette, name = "Species") +
-  labs(
-    title = "a) Normalized Residuals vs. Fitted Values",
-    x = "Fitted RGR Values",
-    y = "Normalized Residuals"
-  ) +
-  base_diag_theme
-
-# Diagnostic Plot B: Normalized Residuals vs Initial Area (Checks heteroscedasticity removal)
-p_res_area <- ggplot(res_df, aes(x = A1, y = NormResid, color = fSpecies)) +
+# Panel A: Heteroscedasticity Comparison (2 columns)
+p_hetero_comp <- ggplot(df_diag_all, aes(x = A1, y = Resid, color = fSpecies)) +
   geom_point(alpha = 0.55, size = 1.6) +
   geom_hline(yintercept = 0, linetype = "dashed", color = "black", linewidth = 0.6) +
   geom_hline(yintercept = c(-2, 2), linetype = "dotted", color = "red", linewidth = 0.5) +
   scale_x_log10() +
   scale_color_manual(values = species_palette, name = "Species") +
+  facet_wrap(~ Model, ncol = 2) +
   labs(
-    title = "b) Normalized Residuals vs. Initial Area (log scale)",
-    x = expression(paste("Initial Planar Area A1 (cm"^2*")")),
-    y = "Normalized Residuals"
+    title = "a) Variance Stabilization: Baseline (m_0) vs. Winning Model",
+    x = expression(paste("Initial Planar Area A1 (cm"^2*", log scale)")),
+    y = "Residuals (Pearson / Normalized)"
   ) +
   base_diag_theme
 
-# Diagnostic Plot C: Species-Stratified Q-Q Normal Plots
-p_qq <- ggplot(res_df, aes(sample = NormResid, color = fSpecies)) +
+# Diagnostic Panel B: Q-Q Plots for Winning Model
+p_qq_win <- ggplot(df_diag_win, aes(sample = Resid, color = fSpecies)) +
   stat_qq(alpha = 0.55, size = 1.6) +
   stat_qq_line(color = "black", linetype = "dashed") +
   facet_wrap(~ fSpecies, scales = "free_y") +
-  scale_color_manual(values = species_palette) +
+  scale_color_manual(values = species_palette, name = "Species") + # Matches Panel A name
   labs(
-    title = "c) Q-Q Normal Plots of Normalized Residuals by Species",
+    title = "b) Q-Q Normal Plots of Normalized Residuals (Winning Model)",
     x = "Theoretical Quantiles",
     y = "Sample Quantiles"
   ) +
   base_diag_theme +
-  theme(legend.position = "none")
+  theme(
+    legend.position = "none",
+    strip.text = element_text(face = "bold.italic")
+  )
 
-# Combine into 3-panel composite dashboard
-diag_composite <- (p_res_fit + p_res_area) / p_qq + 
-  plot_layout(guides = "collect") & 
+# Combine into composite figure
+diag_composite <- (p_hetero_comp) / (p_qq_win) + 
+  plot_layout(guides = "collect", heights = c(1, 1)) & 
   theme(legend.position = "bottom")
 
 # ------------------------------------------------------------------------------
