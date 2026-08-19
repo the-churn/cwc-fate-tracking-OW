@@ -37,6 +37,16 @@ exclude_genet_ids <- c(
   994, 995, 1115
 )
 
+# Genet.IDs confirmed present in 2015 that were occluded (not annotatable) in
+# the 2022 survey imagery/mesh -- e.g. overgrowth by another colony/sponge/algae,
+# sediment drape, structural collapse/rubble, or a camera-geometry shadow --
+# after visual auditing. These are within the overlapping survey area (unlike
+# exclude_genet_ids above) but must NOT be scored as mortality: they get a
+# distinct "Occluded" fate and are treated as censored, not dead.
+occluded_2022_genet_ids <- c(
+  46, 67, 292, 371, 447, 469, 470, 497, 498, 499, 500, 501, 502, 507, 599, 828
+)
+
 # Spatial uncertainty parameters (in cm)
 sigma_scale <- 0.100  # Agisoft RMS error (0.001 m)
 sigma_gsd   <- 0.216  # Ground Sampling Distance resolution (2.16 mm) of orthomosaic
@@ -125,14 +135,19 @@ agg_2022 <- regions_cleaned %>%
 # ------------------------------------------------------------------------------
 # 5. DEMOGRAPHIC FATE ANALYSIS & MDC ERROR PROPAGATION
 # ------------------------------------------------------------------------------
-master_CWC_tracked <- full_join(agg_2015, agg_2022, by = "Join_ID", suffix = c("_2015", "_2022")) %>%
+master_CWC_flagged <- full_join(agg_2015, agg_2022, by = "Join_ID", suffix = c("_2015", "_2022")) %>%
   mutate(
     Species = coalesce(Species_2015, Species_2022),
     c15     = replace_na(Poly_Count_2015, 0),
     c22     = replace_na(Poly_Count_2022, 0),
     
     # Demographic fate classification (7-year window)
+    # NOTE: the occlusion check runs FIRST. case_when() returns the value of
+    # the first TRUE condition, so this must precede "Total Mortality" or it
+    # will never fire -- occluded genets would silently fall through to
+    # "Total Mortality" exactly as before.
     fate = case_when(
+      Join_ID %in% as.character(occluded_2022_genet_ids) & c15 > 0 & c22 == 0 ~ "Occluded",
       c15 == 0 & c22 > 0  ~ "Recruit",
       c15 > 0  & c22 == 0 ~ "Total Mortality",
       c15 == 1 & c22 > 1  ~ "Fission",
@@ -153,23 +168,63 @@ master_CWC_tracked <- full_join(agg_2015, agg_2022, by = "Join_ID", suffix = c("
     Centroid_y     = coalesce(Centroid_y_2015, Centroid_y_2022),
     
     # Growth metrics (Annualized over 7 years)
-    Annual_Area_Change      = (Area_2022 - Area_2015) / 7,
-    Annual_Surf_Area_Change = (Surf_Area_2022 - Surf_Area_2015) / 7,
+    # For "Occluded" genets, Area_2022 = 0 is a non-detection artifact, not a
+    # real measurement -- computing change/RGR from it would fabricate a false
+    # "shrank to nothing" signal. Force these to NA instead of a number.
+    Annual_Area_Change      = ifelse(fate == "Occluded", NA_real_, (Area_2022 - Area_2015) / 7),
+    Annual_Surf_Area_Change = ifelse(fate == "Occluded", NA_real_, (Surf_Area_2022 - Surf_Area_2015) / 7),
     
-    RGR_Planar  = ifelse(Area_2015 > 0 & Area_2022 > 0, (log(Area_2022) - log(Area_2015)) / 7, NA),
-    RGR_Surface = ifelse(Surf_Area_2015 > 0 & Surf_Area_2022 > 0, (log(Surf_Area_2022) - log(Surf_Area_2015)) / 7, NA),
+    RGR_Planar  = ifelse(fate != "Occluded" & Area_2015 > 0 & Area_2022 > 0,
+                          (log(Area_2022) - log(Area_2015)) / 7, NA),
+    RGR_Surface = ifelse(fate != "Occluded" & Surf_Area_2015 > 0 & Surf_Area_2022 > 0,
+                          (log(Surf_Area_2022) - log(Surf_Area_2015)) / 7, NA),
     
     # Minimum Detectable Change (MDC) perimeter propagation
     Area_MDC_Total  = 1.96 * sigma_edge * sqrt(Perimeter_2015^2 + Perimeter_2022^2),
     Area_MDC_Annual = Area_MDC_Total / 7,
     
     # Detectability classification
+    # Occluded genets get their own label rather than falling into
+    # "Detectable Change" (via the old Total Mortality branch) or silently
+    # resolving to "Below Detection Limit" once Annual_Area_Change is NA.
     Status_Planar = case_when(
-      fate %in% c("Recruit", "Total Mortality") ~ "Detectable Change",
+      fate == "Occluded"                        ~ "Not Assessed (Occluded)",
+      fate %in% c("Recruit", "Total Mortality")  ~ "Detectable Change",
       abs(Annual_Area_Change) > Area_MDC_Annual  ~ "Detectable Change",
-      TRUE                                       ~ "Below Detection Limit"
+      TRUE                                        ~ "Below Detection Limit"
     )
-  ) %>%
+  )
+
+# ------------------------------------------------------------------------------
+# 5b. VALIDATION -- confirm the occlusion override matched what you expect
+# ------------------------------------------------------------------------------
+occlusion_audit <- master_CWC_flagged %>%
+  filter(Join_ID %in% as.character(occluded_2022_genet_ids)) %>%
+  select(Join_ID, c15, c22, fate)
+
+unmatched_pattern <- occlusion_audit %>% filter(fate != "Occluded")
+if (nrow(unmatched_pattern) > 0) {
+  warning(
+    "These occluded_2022_genet_ids did NOT receive the 'Occluded' fate -- ",
+    "check for a typo, or a genet that actually had a 2022 detection ",
+    "(c22 > 0) and shouldn't be on this list: ",
+    paste(unmatched_pattern$Join_ID, collapse = ", ")
+  )
+}
+
+missing_ids <- setdiff(as.character(occluded_2022_genet_ids), occlusion_audit$Join_ID)
+if (length(missing_ids) > 0) {
+  warning(
+    "These occluded_2022_genet_ids were not found in master_CWC_flagged at all -- ",
+    "check exclude_genet_ids, ID typos, or whether they were filtered upstream: ",
+    paste(missing_ids, collapse = ", ")
+  )
+}
+
+# ------------------------------------------------------------------------------
+# 5c. FINAL COLUMN SELECTION
+# ------------------------------------------------------------------------------
+master_CWC_tracked <- master_CWC_flagged %>%
   select(
     TagLab.Genet.Id = Join_ID, Species, fate, Status_Planar, 
     Area_MDC_Annual, Area_MDC_Total, Centroid_x, Centroid_y,
@@ -182,3 +237,4 @@ master_CWC_tracked <- full_join(agg_2015, agg_2022, by = "Join_ID", suffix = c("
 write_csv(master_CWC_tracked, path_tracked)
 
 cat("Pipeline complete. Processed dataset saved to:\n", path_tracked, "\n")
+cat(nrow(occlusion_audit), "occluded genets reclassified; see occlusion_audit for details.\n")
