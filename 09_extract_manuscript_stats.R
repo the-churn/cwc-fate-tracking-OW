@@ -32,7 +32,7 @@ valid_species <- mc_inputs$valid_species
 athresh_sizes <- if (file.exists(athresh_path)) {
   readRDS(athresh_path)
 } else {
-  c("Desmophyllum pertusum" = 34.7, "Madrepora oculata" = 56.2, "Primnoa msp." = 157.5)
+  c("Desmophyllum pertusum" = 33.4, "Madrepora oculata" = 56.7, "Primnoa msp." = 155.4)
 }
 
 # ------------------------------------------------------------------------------
