@@ -3,7 +3,7 @@
 # Description:  Assembles the two-panel Figure 3 for Current Biology: 
 #               (A) size-at-age growth trajectories with 95% Monte Carlo CI and 
 #                   vertical dashed lines at model-derived A_thresh sizes 
-#                   (34.7, 56.2, and 157.5 cm^2), and 
+#                   (33.4, 56.7, and 155.4 cm^2), and 
 #               (B) a ridgeline of population age demographics for 2022. 
 #               Combines both panels with patchwork and exports at 2-column 
 #               (178 mm) 600 DPI print specification.
