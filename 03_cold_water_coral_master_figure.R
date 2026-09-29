@@ -289,17 +289,20 @@ make_density_plot <- function(grp_name, tag) {
     theme_horizontal_panel()
 }
 
+
 # ------------------------------------------------------------------------------
 # 6. GENERATE ROW 1 PANELS (PANELS A, B, C)
 # ------------------------------------------------------------------------------
 cat("Building Row 1 density distribution plots...\n")
-# x-axis title is identical across A-C, so it's shown only once, under the middle panel
-p1 <- make_density_plot("Madrepora oculata", "A") + 
+
+p1 <- make_density_plot("Madrepora oculata", "a") + 
   theme(axis.title.x = element_blank())
-p2 <- make_density_plot("Desmophyllum pertusum", "B") + 
-  theme(axis.title.y = element_blank(), axis.text.y = element_blank())
-p3 <- make_density_plot("Primnoa msp.", "C") + 
-  theme(axis.title.y = element_blank(), axis.text.y = element_blank(), axis.title.x = element_blank())
+
+p2 <- make_density_plot("Desmophyllum pertusum", "b") + 
+  theme(axis.title.y = element_blank()) # Restores y-axis tick values
+
+p3 <- make_density_plot("Primnoa msp.", "c") + 
+  theme(axis.title.y = element_blank(), axis.title.x = element_blank()) # Restores y-axis tick values
 
 # ------------------------------------------------------------------------------
 # 7. GENERATE ROW 2 PANELS (PANELS D, E, F)
@@ -343,7 +346,7 @@ p1_growth <- ggplot(df_growth, aes(x = Species, y = Annual_Area_Change)) +
   ) +
   coord_cartesian(clip = "off") +
   labs(
-    tag = "D",
+    tag = "d",
     y = expression(bold(paste("Annual growth (", cm^2, " ", yr^-1, ")")))
   ) +
   publication_theme
@@ -358,7 +361,7 @@ p2_recruitment <- ggplot(summary_stats_row2, aes(x = Species, y = recruitment_ra
   scale_y_continuous(expand = expansion(mult = c(0, 0.18))) +
   coord_cartesian(clip = "off") +
   labs(
-    tag = "E",
+    tag = "e",
     y = "Recruitment rate (%)"
   ) +
   publication_theme
@@ -373,7 +376,7 @@ p3_mortality <- ggplot(summary_stats_row2, aes(x = Species, y = mortality_rate, 
   scale_y_continuous(expand = expansion(mult = c(0, 0.18))) +
   coord_cartesian(clip = "off") +
   labs(
-    tag = "F",
+    tag = "f",
     y = "Mortality rate (%)"
   ) +
   publication_theme
