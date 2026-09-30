@@ -27,6 +27,10 @@
 #               shared y-scale and one jitter layer, and zero-count cells
 #               (Primnoa Partial Mortality) show explicitly as "n = 0" rather
 #               than disappearing from the panel.
+#
+#               REVISED (v3): occluded colonies are now dropped at load (same
+#               fix as 03.5). Their 2022 area is NA, so they had been scored as
+#               Total Mortality in the Wilcoxon tests and the figure.
 # Dependencies: readxl, dplyr, stringr, ggplot2, ragg
 # ==============================================================================
 
@@ -69,6 +73,15 @@ MIN_N_FOR_VIOLIN <- 5
 # ------------------------------------------------------------------------------
 cat("Loading age-integrated master dataset...\n")
 Master_CWC_Tracked_MDC_Age <- read_excel(input_xlsx_path)
+
+# Occluded colonies (present in 2015, not assessable in 2022) have Area_2022 =
+# NA, so present_2022 is FALSE and the filters below would score them as Total
+# Mortality. They are censored everywhere else in the analysis, so drop them
+# here too, before any fate is assigned.
+n_occluded <- sum(Master_CWC_Tracked_MDC_Age$state_transition == "occluded", na.rm = TRUE)
+Master_CWC_Tracked_MDC_Age <- Master_CWC_Tracked_MDC_Age %>%
+  filter(is.na(state_transition) | state_transition != "occluded")
+cat("Censored", n_occluded, "occluded colonies (not scored as mortality).\n")
 
 standardise_species <- function(x) {
   case_when(
