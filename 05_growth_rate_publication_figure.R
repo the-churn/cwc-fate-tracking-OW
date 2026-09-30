@@ -1,8 +1,9 @@
 # ==============================================================================
 # Script Name:  05_growth_rate_publication_figure.R
 # Description:  Loads the fitted heteroscedastic asymptotic (GNLS) growth model
-#               from Script 04, extracts biological thresholds dynamically, 
-#               and generates an Ecography-styled publication figure mapping 
+#               from Script 04, extracts biological thresholds dynamically,
+#               saves them (models/athresh_sizes.rds) for Scripts 08, 09 and 13,
+#               and generates an Ecography-styled publication figure mapping
 #               relative growth rate (RGR) across initial sizes.
 # Dependencies: readxl, dplyr, nlme, ggplot2, ragg
 # ==============================================================================
@@ -97,6 +98,20 @@ rc_pr   <- exp(lrc_pr)
 size_95_mo <- -log(0.05) / rc_mo
 size_95_dp <- -log(0.05) / rc_dp
 size_95_pr <- -log(0.05) / rc_pr
+
+# Save A_thresh for Scripts 08, 09 and 13. They read models/athresh_sizes.rds
+# and otherwise fall back to hard-coded values (33.4, 56.7, 155.4 cm^2) from an
+# earlier fit, which would go stale whenever the growth model is refitted.
+athresh_sizes <- c(
+  "Madrepora oculata"     = unname(size_95_mo),
+  "Desmophyllum pertusum" = unname(size_95_dp),
+  "Primnoa msp."          = unname(size_95_pr)
+)
+athresh_rds_path <- file.path(base_dir, "models", "athresh_sizes.rds")
+dir.create(dirname(athresh_rds_path), recursive = TRUE, showWarnings = FALSE)
+saveRDS(athresh_sizes, athresh_rds_path)
+cat("A_thresh (cm^2), saved to", athresh_rds_path, ":\n")
+print(round(athresh_sizes, 1))
 
 # Summary DataFrames with dynamic text formatting
 asym_df <- data.frame(
