@@ -1,8 +1,10 @@
 # ==============================================================================
 # Script Name:  01_process_cwc_tracking.R
-# Description:  Processes TagLab annotations (2015 vs 2022), standardizes 
-#               taxa/geometries, tracks cold-water coral (CWC) genets, calculates
-#               demographic fates, and performs perimeter-based MDC error propagation.
+# Description:  Processes TagLab annotations (2015 vs 2022), standardizes
+#               taxa/geometries, tracks cold-water coral (CWC) genets, and
+#               calculates demographic fates and annualized growth metrics.
+#               Measurement error and the 95% Minimum Detectable Change (MDC95)
+#               are modelled in Script 02 from repeat CNN segmentations.
 # Dependencies: tidyverse, stringr
 # ==============================================================================
 
@@ -46,11 +48,6 @@ exclude_genet_ids <- c(
 occluded_2022_genet_ids <- c(
   46, 67, 292, 371, 447, 469, 470, 497, 498, 499, 500, 501, 502, 507, 599, 828
 )
-
-# Spatial uncertainty parameters (in cm)
-sigma_scale <- 0.100  # Agisoft RMS error (0.001 m)
-sigma_gsd   <- 0.216  # Ground Sampling Distance resolution (2.16 mm) of orthomosaic
-sigma_edge  <- sqrt(sigma_scale^2 + sigma_gsd^2) # ~0.238 cm combined edge uncertainty
 
 
 # ------------------------------------------------------------------------------
@@ -133,7 +130,7 @@ agg_2022 <- regions_cleaned %>%
 
 
 # ------------------------------------------------------------------------------
-# 5. DEMOGRAPHIC FATE ANALYSIS & MDC ERROR PROPAGATION
+# 5. DEMOGRAPHIC FATE ANALYSIS & GROWTH METRICS
 # ------------------------------------------------------------------------------
 master_CWC_flagged <- full_join(agg_2015, agg_2022, by = "Join_ID", suffix = c("_2015", "_2022")) %>%
   mutate(
@@ -183,22 +180,7 @@ master_CWC_flagged <- full_join(agg_2015, agg_2022, by = "Join_ID", suffix = c("
     RGR_Planar  = ifelse(fate != "Occluded" & Area_2015 > 0 & Area_2022 > 0,
                           (log(Area_2022) - log(Area_2015)) / 7, NA),
     RGR_Surface = ifelse(fate != "Occluded" & Surf_Area_2015 > 0 & Surf_Area_2022 > 0,
-                          (log(Surf_Area_2022) - log(Surf_Area_2015)) / 7, NA),
-    
-    # Minimum Detectable Change (MDC) perimeter propagation
-    Area_MDC_Total  = 1.96 * sigma_edge * sqrt(Perimeter_2015^2 + Perimeter_2022^2),
-    Area_MDC_Annual = Area_MDC_Total / 7,
-    
-    # Detectability classification
-    # Occluded genets get their own label rather than falling into
-    # "Detectable Change" (via the old Total Mortality branch) or silently
-    # resolving to "Below Detection Limit" once Annual_Area_Change is NA.
-    Status_Planar = case_when(
-      fate == "Occluded"                        ~ "Not Assessed (Occluded)",
-      fate %in% c("Recruit", "Total Mortality")  ~ "Detectable Change",
-      abs(Annual_Area_Change) > Area_MDC_Annual  ~ "Detectable Change",
-      TRUE                                        ~ "Below Detection Limit"
-    )
+                          (log(Surf_Area_2022) - log(Surf_Area_2015)) / 7, NA)
   )
 
 # ------------------------------------------------------------------------------
@@ -232,8 +214,7 @@ if (length(missing_ids) > 0) {
 # ------------------------------------------------------------------------------
 master_CWC_tracked <- master_CWC_flagged %>%
   select(
-    TagLab.Genet.Id = Join_ID, Species, fate, Status_Planar, 
-    Area_MDC_Annual, Area_MDC_Total, Centroid_x, Centroid_y,
+    TagLab.Genet.Id = Join_ID, Species, fate, Centroid_x, Centroid_y,
     Area_2015, Area_2022, Annual_Area_Change, RGR_Planar,
     Surf_Area_2015, Surf_Area_2022, Annual_Surf_Area_Change, RGR_Surface,
     Perimeter_2015, Perimeter_2022
