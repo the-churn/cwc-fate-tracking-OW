@@ -4,8 +4,9 @@
 #               colonies into mutually exclusive demographic fates (Total Mortality, 
 #               Partial Mortality, Survived/Grew), tests size-selectivity via 
 #               Wilcoxon rank-sum tests, and builds four publication-ready 
-#               visual alternatives (Boxplot, Density, Logistic Total Mortality, 
-#               Logistic Partial Mortality).
+#               visual alternatives (Boxplot, Density, Logistic Total Mortality,
+#               Logistic Partial Mortality). Occluded colonies are censored at
+#               load, so they are not scored as Total Mortality.
 # Dependencies: readxl, dplyr, stringr, ggplot2, ragg, patchwork
 # ==============================================================================
 
@@ -45,6 +46,15 @@ fate_colors <- c(
 # ------------------------------------------------------------------------------
 cat("Loading age-integrated master dataset...\n")
 Master_CWC_Tracked_MDC_Age <- read_excel(input_xlsx_path)
+
+# Occluded colonies (present in 2015, not assessable in 2022) have Area_2022 =
+# NA, so present_2022 is FALSE and the filters below would score them as Total
+# Mortality. They are censored everywhere else in the analysis, so drop them
+# here too, before any fate is assigned.
+n_occluded <- sum(Master_CWC_Tracked_MDC_Age$state_transition == "occluded", na.rm = TRUE)
+Master_CWC_Tracked_MDC_Age <- Master_CWC_Tracked_MDC_Age %>%
+  filter(is.na(state_transition) | state_transition != "occluded")
+cat("Censored", n_occluded, "occluded colonies (not scored as mortality).\n")
 
 standardise_species <- function(x) {
   case_when(
